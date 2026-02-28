@@ -1,0 +1,59 @@
+{
+  "platforms": {
+    "naver_blog": {
+      "enabled": true,
+      "blog_id": "boyinblue",
+      "rss_url": "https://rss.blog.naver.com/boyinblue.xml",
+      "request_interval_seconds": 0.5
+    },
+    "tistory": {
+      "enabled": true,
+      "blogs": [
+        {
+          "name": "frankler",
+          "blog_url": "https://frankler.tistory.com",
+          "request_interval_seconds": 0.5
+        },
+        {
+          "name": "worlclassproduct",
+          "blog_url": "https://worlclassproduct.tistory.com",
+          "request_interval_seconds": 0.5
+        }
+      ]
+    },
+    "github_pages": {
+      "enabled": true,
+      "blogs": [
+        {
+          "name": "boyinblue",
+          "blog_url": "https://boyinblue.github.io",
+          "request_interval_seconds": 1.0
+        },
+        {
+          "name": "esregnet0409",
+          "blog_url": "https://esregnet0409.github.io",
+          "request_interval_seconds": 1.0
+        }
+      ]
+    },
+    "youtube": {
+      "enabled": true,
+      "channels": [
+        {
+          "name": "saejinpark",
+          "channel_url": "https://www.youtube.com/@saejinpark4614",
+          "request_interval_seconds": 1.0
+        }
+      ]
+    }
+  },
+  "scheduler": {
+    "enabled": true,
+    "daily_digest_time": "08:00",
+    "anniversary_days": [1, 7, 30, 365],
+    "send_via_telegram": true
+  },
+  "output_directory": "./storage",
+  "archive_root": "../archive",
+  "log_level": "INFO"
+}

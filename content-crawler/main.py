@@ -1,0 +1,363 @@
+# -*- coding: utf-8 -*-
+# 파일 인코딩: UTF-8
+"""콘텐츠 크롤러 메인 실행 스크립트
+
+여러 플랫폼에서 콘텐츠를 수집하고 아카이브에 저장합니다.
+지원: 네이버 블로그, Tistory, GitHub Pages, YouTube
+"""
+
+import json
+import os
+import sys
+import argparse
+from datetime import datetime, timezone
+from typing import List, Dict
+
+# 환경 변수 로드
+from utils.secrets import load_environment
+load_environment()
+
+# 로컬 모듈 import
+from crawlers.naver_blog import NaverBlogCrawler
+from crawlers.tistory_blog import TistoryBlogCrawler
+from crawlers.github_pages import GitHubPagesCrawler
+from crawlers.youtube import YouTubeCrawler
+from archive_manager import ArchiveManager
+from event_date_extractor import EventDateExtractor
+from utils.telegram_notifier import TelegramNotifier
+from scheduler import DailyDigestScheduler
+
+
+def load_config(config_file="config.json"):
+    """설정 파일을 로드합니다."""
+    if not os.path.exists(config_file):
+        print(f"[!] 설정 파일을 찾을 수 없습니다: {config_file}")
+        return None
+
+    with open(config_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_metadata(posts, output_file):
+    """포스트 메타데이터를 JSON으로 저장합니다."""
+    data = {
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "total_posts": len(posts),
+        "posts": posts,
+    }
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"[+] 메타데이터 저장: {output_file} ({len(posts)}개)")
+
+
+def archive_posts(posts, archive_root="./archive", blog_id="default", summarize: bool = False):
+    """포스트를 아카이브에 저장합니다."""
+    archive_mgr = ArchiveManager(archive_root)
+    extractor = EventDateExtractor()
+    archived_count = 0
+
+    for post in posts:
+        try:
+            title = post.get("title", "제목 없음")
+            link = post.get("link", "")
+            content = post.get("content", "")
+            published = post.get("published", "")
+
+            # 중복 확인
+            if archive_mgr.is_archived(link):
+                print(f"[i] 이미 아카이브됨, 건너뜁니다: {link}")
+                continue
+
+            # 이벤트 날짜 추출
+            extracted_dates = extractor.extract(content) if content else []
+
+            # 마크다운 저장
+            md_content = f"---\n"
+            md_content += f"title: {title}\n"
+            md_content += f"published: {published}\n"
+            md_content += f"link: {link}\n"
+            if extracted_dates:
+                md_content += f"extracted_dates: {json.dumps(extracted_dates, ensure_ascii=False)}\n"
+            md_content += f"---\n\n"
+            md_content += content or "(본문 없음)"
+
+            archive_mgr.save_post(md_content, published, title)
+            archived_count += 1
+
+            if summarize:
+                try:
+                    summary = archive_mgr.summarize_with_ollama(content)
+                    if summary:
+                        print(f"[+] Ollama 요약 생성 완료")
+                except Exception as e:
+                    print(f"[!] 요약 생성 실패: {e}")
+
+        except Exception as e:
+            print(f"[!] 아카이브 실패 ({title}): {e}")
+
+    print(f"[+] {archived_count}개 포스트를 아카이브에 저장했습니다")
+    archive_mgr.update_index(blog_id, platform="mixed")
+
+
+def crawl_naver_blog(config: Dict, args):
+    """네이버 블로그 크롤링"""
+    naver_config = config.get("platforms", {}).get("naver_blog", {})
+    if not naver_config.get("enabled"):
+        return []
+
+    blog_id = naver_config.get("blog_id", "boyinblue")
+    request_interval = naver_config.get("request_interval_seconds", 1.0)
+    rss_url = naver_config.get("rss_url")
+
+    print(f"\n[*] 네이버 블로그 크롤링 시작 (블로그: {blog_id})")
+    print(f"[*] 요청 간격: {request_interval}초")
+
+    crawler = NaverBlogCrawler(blog_id, rss_url=rss_url, request_interval=request_interval)
+    posts = crawler.crawl(
+        fetch_content=args.fetch_content,
+        max_posts=args.max_posts,
+        full=args.full,
+        follow_internal=args.follow_internal,
+    )
+
+    if posts:
+        archive_root = config.get("archive_root", "./archive")
+        archive_posts(posts, archive_root, blog_id, summarize=args.summarize)
+
+    return posts
+
+
+def crawl_tistory_blogs(config: Dict, args):
+    """티스토리 블로그 크롤링"""
+    tistory_config = config.get("platforms", {}).get("tistory", {})
+    if not tistory_config.get("enabled"):
+        return []
+
+    blogs = tistory_config.get("blogs", [])
+    all_posts: List[Dict] = []
+
+    for blog_info in blogs:
+        blog_url = blog_info.get("blog_url")
+        blog_name = blog_info.get("name", "unknown")
+        request_interval = blog_info.get("request_interval_seconds", 1.0)
+
+        if not blog_url:
+            continue
+
+        print(f"\n[*] 티스토리 블로그 크롤링 시작 ({blog_name}: {blog_url})")
+        print(f"[*] 요청 간격: {request_interval}초")
+
+        crawler = TistoryBlogCrawler(blog_url, request_interval=request_interval)
+        posts = crawler.crawl(max_posts=args.max_posts, use_sitemap=args.use_sitemap)
+
+        if posts:
+            archive_root = config.get("archive_root", "./archive")
+            archive_posts(posts, archive_root, blog_name, summarize=args.summarize)
+            all_posts.extend(posts)
+
+    return all_posts
+
+
+def crawl_github_pages(config: Dict, args):
+    """GitHub Pages 크롤링"""
+    gp_config = config.get("platforms", {}).get("github_pages", {})
+    if not gp_config.get("enabled"):
+        return []
+
+    blogs = gp_config.get("blogs", [])
+    all_posts: List[Dict] = []
+
+    for blog_info in blogs:
+        blog_url = blog_info.get("blog_url")
+        blog_name = blog_info.get("name", "unknown")
+        request_interval = blog_info.get("request_interval_seconds", 1.0)
+
+        if not blog_url:
+            continue
+
+        print(f"\n[*] GitHub Pages 크롤링 시작 ({blog_name}: {blog_url})")
+        print(f"[*] 요청 간격: {request_interval}초")
+
+        crawler = GitHubPagesCrawler(blog_url, request_interval=request_interval)
+        posts = crawler.crawl(fetch_content=args.fetch_content, max_posts=args.max_posts)
+
+        if posts:
+            archive_root = config.get("archive_root", "./archive")
+            archive_posts(posts, archive_root, blog_name, summarize=args.summarize)
+            all_posts.extend(posts)
+
+    return all_posts
+
+
+def crawl_youtube(config: Dict, args):
+    """YouTube 채널 크롤링"""
+    yt_config = config.get("platforms", {}).get("youtube", {})
+    if not yt_config.get("enabled"):
+        return []
+
+    channels = yt_config.get("channels", [])
+    all_videos: List[Dict] = []
+
+    for channel_info in channels:
+        channel_url = channel_info.get("channel_url")
+        channel_name = channel_info.get("name", "unknown")
+        request_interval = channel_info.get("request_interval_seconds", 1.0)
+
+        if not channel_url:
+            continue
+
+        print(f"\n[*] YouTube 채널 크롤링 시작 ({channel_name}: {channel_url})")
+        print(f"[*] 요청 간격: {request_interval}초")
+
+        crawler = YouTubeCrawler(channel_url=channel_url, request_interval=request_interval)
+        videos = crawler.crawl(max_videos=args.max_posts)
+
+        if videos:
+            archive_root = config.get("archive_root", "./archive")
+            archive_posts(videos, archive_root, channel_name, summarize=args.summarize)
+            all_videos.extend(videos)
+
+    return all_videos
+
+
+def test_telegram_config():
+    """텔레그램 설정을 테스트합니다."""
+    from utils.secrets import get_telegram_token, get_telegram_chat_id
+    
+    print("\n[*] 텔레그램 설정 확인 중...")
+    token = get_telegram_token()
+    chat_id = get_telegram_chat_id()
+    
+    print(f"  TELEGRAM_BOT_TOKEN: {'✓ 설정됨' if token and token != 'your_telegram_bot_token_here' else '✗ 설정 필요'}")
+    print(f"  TELEGRAM_CHAT_ID: {'✓ 설정됨' if chat_id else '✗ 설정 필요'}")
+    
+    if not token or token == 'your_telegram_bot_token_here':
+        print("\n[i] 텔레그램 봇 토큰을 설정하려면:")
+        print("  1. Telegram에서 @BotFather와 대화")
+        print("  2. /newbot 명령어로 새 봇 생성")
+        print("  3. 얻은 토큰을 .env 파일의 TELEGRAM_BOT_TOKEN에 입력")
+        return False
+    
+    if not chat_id:
+        print("\n[i] 텔레그램 채팅 ID를 설정하려면 .env 파일의 TELEGRAM_CHAT_ID를 입력하세요.")
+        return False
+    
+    # 실제 테스트
+    print("\n[*] 텔레그램 메시지 발송 테스트...")
+    notifier = TelegramNotifier()
+    
+    if not notifier.is_configured():
+        print("[!] 텔레그램이 설정되지 않았습니다.")
+        return False
+
+    success = notifier.send_message("🔔 <b>테스트 메시지</b>\n\n콘텐츠 크롤러 텔레그램 설정이 정상작동합니다!")
+    if success:
+        print("[+] 텔레그램 설정 성공!")
+    else:
+        print("[!] 텔레그램 발송 실패 - 토큰이나 채팅 ID를 확인하세요")
+
+    return success
+
+
+def main():
+    """메인 함수"""
+    parser = argparse.ArgumentParser(description="콘텐츠 크롤러 v2.1 - 다중 플랫폼 지원")
+    parser.add_argument(
+        "--no-archive",
+        action="store_true",
+        help="아카이브에 저장하지 않고 메타데이터만 저장",
+    )
+    parser.add_argument(
+        "--fetch-content",
+        action="store_true",
+        help="포스트 본문도 함께 다운로드 (시간이 오래 걸림)",
+    )
+    parser.add_argument(
+        "--max-posts",
+        type=int,
+        default=None,
+        help="최대 크롤링 포스트 수 (테스트용)",
+    )
+    parser.add_argument(
+        "--summarize",
+        action="store_true",
+        help="Ollama를 사용해 각 포스트 요약 추가",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="RSS에 없는 이전 글까지 스크레이핑해 최대한 많이 수집",
+    )
+    parser.add_argument(
+        "--follow-internal",
+        action="store_true",
+        help="크롤된 포스트 내에 있는 같은 블로그의 다른 포스트 링크도 함께 따라갑니다.",
+    )
+    parser.add_argument(
+        "--use-sitemap",
+        action="store_true",
+        help="티스토리 블로그의 sitemap.xml에 있는 링크를 추가로 수집합니다.",
+    )
+    parser.add_argument(
+        "--schedule",
+        action="store_true",
+        help="스케줄러 모드로 실행 (일일 다이제스트)",
+    )
+    parser.add_argument(
+        "--test-telegram",
+        action="store_true",
+        help="텔레그램 설정을 테스트합니다",
+    )
+
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("콘텐츠 크롤러 v2.1")
+    print("=" * 60)
+    print()
+
+    # 텔레그램 테스트 모드
+    if args.test_telegram:
+        test_telegram_config()
+        return
+
+    # 설정 로드
+    config = load_config("config.json")
+    if not config:
+        return
+
+    # 스케줄러 모드
+    if args.schedule:
+        notifier = TelegramNotifier()
+        scheduler_config = config.get("scheduler", {})
+        scheduler = DailyDigestScheduler(scheduler_config, notifier)
+        scheduler.start()
+        return
+
+    # 크롤링 모드
+    print("[*] 크롤링 시작...")
+    all_posts: List[Dict] = []
+
+    # 각 플랫폼별 크롤링
+    if not args.no_archive:
+        naver_posts = crawl_naver_blog(config, args)
+        all_posts.extend(naver_posts)
+
+        tistory_posts = crawl_tistory_blogs(config, args)
+        all_posts.extend(tistory_posts)
+
+        github_posts = crawl_github_pages(config, args)
+        all_posts.extend(github_posts)
+
+        youtube_videos = crawl_youtube(config, args)
+        all_posts.extend(youtube_videos)
+
+    print("\n" + "=" * 60)
+    print(f"[+] 모든 작업 완료! (총 {len(all_posts)}개 항목 수집)")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
