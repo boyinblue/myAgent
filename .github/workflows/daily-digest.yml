@@ -9,6 +9,9 @@ on:
 jobs:
   crawl-and-digest:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./content-crawler
     
     steps:
       - name: Checkout code
@@ -20,13 +23,11 @@ jobs:
           python-version: '3.11'
       
       - name: Install dependencies
-        working-directory: ./content-crawler
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
       - name: Run daily digest scheduler
-        working-directory: ./content-crawler
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
