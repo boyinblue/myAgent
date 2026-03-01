@@ -31,27 +31,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python -c "
-from scheduler import AnniversaryFinder
-from utils.telegram_notifier import TelegramNotifier
-import os
-
-if not os.environ.get('TELEGRAM_BOT_TOKEN'):
-    print('❌ TELEGRAM_BOT_TOKEN not set')
-    exit(1)
-
-finder = AnniversaryFinder('./archive')
-posts = finder.find_anniversary_posts([1, 7, 30, 365])
-
-if posts:
-    notifier = TelegramNotifier()
-    messages = finder.format_anniversary_message(posts)
-    notifier.send_digest('📆 오늘의 Anniversary Posts', messages)
-    print(f'✅ Sent anniversary digest with {len(posts)} posts')
-else:
-    print('ℹ️ No anniversary posts found today')
-"
+        run: python run_anniversary_digest.py
         timeout-minutes: 5
       
       - name: Log completion
