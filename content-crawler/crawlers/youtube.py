@@ -6,6 +6,7 @@ import feedparser
 import requests
 import re
 import json
+from collections import Counter
 from typing import List, Dict, Optional
 import time
 
@@ -50,30 +51,50 @@ class YouTubeCrawler:
         # 핸들 또는 커스텀 URL에서 채널 ID 추출 (페이지 파싱 필요)
         try:
             print(f"[*] 유튜브 채널 URL에서 채널 ID 추출 중: {url}")
-            resp = requests.get(url, headers=self.headers, timeout=10)
+            
+            # Accept-Language 헤더 추가 (일부 YouTube 페이지에서 필요)
+            headers = self.headers.copy()
+            headers["Accept-Language"] = "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+            
+            resp = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
             resp.raise_for_status()
 
-            # 방법 1: JSON-LD 스트럭처드 데이터에서 찾기
+            # 방법 1: URL에서 직접 channelId 추출 (리디렉션 후)
+            if "channel/" in resp.url:
+                match = re.search(r"channel/(UC[a-zA-Z0-9_-]{22})", resp.url)
+                if match:
+                    print(f"[+] URL 리디렉션에서 채널 ID 발견")
+                    return match.group(1)
+            
+            # 방법 2: JSON-LD 스트럭처드 데이터에서 찾기
             match = re.search(r'"@type":"Channel"[^}]*"identifier":"([^"]+)"', resp.text)
             if match:
                 channel_id = match.group(1).replace("@", "").strip()
                 if channel_id.startswith("UC"):
+                    print(f"[+] JSON-LD에서 채널 ID 발견")
                     return channel_id
             
-            # 방법 2: var ytInitialData = {...} 에서 찾기
+            # 방법 3: channelId: "UCxxx" 형식으로 찾기
             match = re.search(r'"channelId":"(UC[a-zA-Z0-9_-]{22})"', resp.text)
             if match:
+                print(f"[+] channelId 필드에서 발견")
                 return match.group(1)
             
-            # 방법 3: ytInitialData에서 다른 경로로 찾기
-            match = re.search(r'var ytInitialData = ({.*?});', resp.text)
+            # 방법 4: url: "http://www.youtube.com/channel/UCxxx" 형식으로 찾기
+            match = re.search(r'"url":"[^"]*channel/(UC[a-zA-Z0-9_-]{22})"', resp.text)
+            if match:
+                print(f"[+] URL 필드에서 발견")
+                return match.group(1)
+            
+            # 방법 5: ytInitialData에서 깊게 찾기
+            match = re.search(r'var ytInitialData = ({.*?});', resp.text, re.DOTALL)
             if match:
                 try:
                     data = json.loads(match.group(1))
                     # 재귀적으로 channelId 찾기
                     def find_channel_id(obj):
                         if isinstance(obj, dict):
-                            if "channelId" in obj and obj["channelId"].startswith("UC"):
+                            if "channelId" in obj and isinstance(obj["channelId"], str) and obj["channelId"].startswith("UC"):
                                 return obj["channelId"]
                             for v in obj.values():
                                 result = find_channel_id(v)
@@ -88,11 +109,20 @@ class YouTubeCrawler:
                     
                     channel_id = find_channel_id(data)
                     if channel_id:
+                        print(f"[+] ytInitialData에서 채널 ID 발견")
                         return channel_id
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[!] ytInitialData 파싱 실패: {e}")
+            
+            # 방법 6: 전체 텍스트에서 UC로 시작하는 첫 24글자 찾기
+            matches = re.findall(r'"(UC[a-zA-Z0-9_-]{22})"', resp.text)
+            if matches:
+                # 가장 출현 빈도가 높은 것 사용 (대개 채널 ID)
+                most_common = Counter(matches).most_common(1)[0][0]
+                print(f"[+] 텍스트에서 가장 흔한 ID 선택")
+                return most_common
 
-            print(f"[!] HTML에서 채널 ID를 찾을 수 없습니다.")
+            print(f"[!] HTML에서 채널 ID를 찾을 수 없습니다. (응답 길이: {len(resp.text)} bytes)")
         except Exception as e:
             print(f"[!] 채널 ID 추출 실패: {e}")
 

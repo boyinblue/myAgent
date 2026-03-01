@@ -91,14 +91,37 @@ class TelegramNotifier:
         if not errors:
             return False
 
+        if not self.is_configured():
+            print("[!] 텔레그램이 설정되지 않았습니다.")
+            return False
+
         message = "<b>❌ 크롤링 중 발생한 에러들:</b>\n\n"
-        for i, error in enumerate(errors[:20], 1):  # 최대 20개까지만
-            message += f"{i}. <code>{self._escape_html(error)}</code>\n"
+        for i, error in enumerate(errors[:15], 1):  # 최대 15개까지만
+            # 에러 메시지 길이 제한 (너무 길면 Telegram 제한에 걸림)
+            error_text = error[:100] if len(error) > 100 else error
+            message += f"{i}. <code>{self._escape_html(error_text)}</code>\n"
 
-        if len(errors) > 20:
-            message += f"\n... 외 {len(errors) - 20}개 에러"
+        if len(errors) > 15:
+            message += f"\n... 외 {len(errors) - 15}개 에러"
 
-        return self.send_message(message)
+        try:
+            url = f"{self.base_url}/sendMessage"
+            payload = {
+                "chat_id": self.chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            }
+            print(f"[*] 에러 메시지 발송 시도 (Chat ID: {self.chat_id}, 에러 수: {len(errors)})")
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            print(f"[+] 텔레그램 에러 메시지 발송 성공 ({len(errors)}개 에러)")
+            return True
+        except requests.exceptions.HTTPError as e:
+            print(f"[ERROR] 텔레그램 발송 실패 (HTTP {response.status_code}): {response.text}")
+            return False
+        except Exception as e:
+            print(f"[ERROR] 텔레그램 발송 실패: {e}")
+            return False
 
     @staticmethod
     def _escape_html(text: str) -> str:
