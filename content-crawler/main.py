@@ -59,6 +59,9 @@ def save_metadata(posts, output_file):
 def archive_posts(posts, archive_root="./archive", blog_id="default", summarize: bool = False, raw_dir: str = None):
     """포스트를 아카이브에 저장합니다.
 
+    HTML이 제공된 포스트에서는 본문에서 이미지를 찾아 메타데이터(주소, 설명, 크기, SHA256)를 추출하고
+    Frontmatter에 `images` 필드로 추가합니다.
+
     raw_dir가 지정되면 각 포스트의 원본 HTML/Raw 데이터를 해당 디렉토리에 저장합니다 (로컬 전용).
     """
     archive_mgr = ArchiveManager(archive_root)
@@ -350,7 +353,7 @@ def test_telegram_config():
 
 def main():
     """메인 함수"""
-    parser = argparse.ArgumentParser(description="콘텐츠 크롤러 v2.1 - 다중 플랫폼 지원")
+    parser = argparse.ArgumentParser(description="콘텐츠 크롤러 v2.2 - 다중 플랫폼 지원")
     parser.add_argument(
         "--no-archive",
         action="store_true",
@@ -411,7 +414,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("콘텐츠 크롤러 v2.1")
+    print(f"콘텐츠 크롤러 v{CRAWLER_VERSION}")
     print("=" * 60)
     print()
 
