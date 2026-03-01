@@ -28,6 +28,9 @@ from utils.telegram_notifier import TelegramNotifier
 from utils.error_collector import ErrorCollector
 from scheduler import DailyDigestScheduler
 
+# 버전 정보 (아카이브 업데이트를 추적하기 위해)
+CRAWLER_VERSION = "2.2"
+
 
 def load_config(config_file="config.json"):
     """설정 파일을 로드합니다."""
@@ -65,6 +68,8 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
             link = post.get("link", "")
             content = post.get("content", "")
             published = post.get("published", "")
+            tags = post.get("tags") or []
+            comments = post.get("summary") or ""
 
             # 중복 확인
             if archive_mgr.is_archived(link):
@@ -74,26 +79,33 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
             # 이벤트 날짜 추출
             extracted_dates = extractor.extract(content) if content else []
 
-            # 마크다운 저장
-            md_content = f"---\n"
-            md_content += f"title: {title}\n"
-            md_content += f"published: {published}\n"
-            md_content += f"link: {link}\n"
-            if extracted_dates:
-                md_content += f"extracted_dates: {json.dumps(extracted_dates, ensure_ascii=False)}\n"
-            md_content += f"---\n\n"
-            md_content += content or "(본문 없음)"
+            # 키워드 추출
+            from utils.keyword_extractor import extract_keywords
+            keywords = extract_keywords(content or "", top_n=5)
 
-            archive_mgr.save_post(md_content, published, title)
-            archived_count += 1
-
-            if summarize:
+            # 요약 요청 시
+            summary_text = ""
+            if summarize and content:
                 try:
-                    summary = archive_mgr.summarize_with_ollama(content)
-                    if summary:
+                    summary_text = archive_mgr.summarize_with_ollama(content) or ""
+                    if summary_text:
                         print(f"[+] Ollama 요약 생성 완료")
                 except Exception as e:
                     print(f"[!] 요약 생성 실패: {e}")
+
+            # 마크다운 생성 및 저장 (create_markdown_file 사용)
+            archive_mgr.create_markdown_file(
+                title=title,
+                url=link,
+                content=content or "(본문 없음)",
+                created_at=published,
+                event_dates=extracted_dates,
+                tags=tags,
+                comments=summary_text or comments,
+                keywords=keywords,
+                crawler_version=CRAWLER_VERSION,
+            )
+            archived_count += 1
 
         except Exception as e:
             print(f"[!] 아카이브 실패 ({title}): {e}")
@@ -311,6 +323,11 @@ def main():
         action="store_true",
         help="텔레그램 설정을 테스트합니다",
     )
+    parser.add_argument(
+        "--no-error-report",
+        action="store_true",
+        help="에러가 발생해도 텔레그램으로 보고하지 않습니다",
+    )
 
     args = parser.parse_args()
 
@@ -365,13 +382,15 @@ def main():
         print(f"[!] 에러 {len(error_collector.errors)}개 발생")
     print("=" * 60)
     
-    # 에러가 있으면 텔레그램으로 전송
-    if error_collector.has_errors():
+    # 에러가 있으면 텔레그램으로 전송 (옵션으로 비활성화 가능)
+    if error_collector.has_errors() and not args.no_error_report:
         notifier = TelegramNotifier()
         if notifier.is_configured():
             notifier.send_errors(error_collector.errors)
         else:
             print("[!] 텔레그램이 설정되지 않아 에러를 전송할 수 없습니다.")
+    elif error_collector.has_errors() and args.no_error_report:
+        print("[i] 에러 리포팅이 비활성화되어 있으므로 텔레그램으로 전송하지 않습니다.")
 
 
 if __name__ == "__main__":

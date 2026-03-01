@@ -161,7 +161,7 @@ python main.py --schedule
       "enabled": true,
       "blogs": [
         {"name": "frankler", "blog_url": "...", "request_interval_seconds": 0.5},
-        {"name": "worlclassproduct", "blog_url": "...", "request_interval_seconds": 0.5}
+        {"name": "worldclassproduct", "blog_url": "...", "request_interval_seconds": 0.5}
       ]
     },
     "github_pages": {

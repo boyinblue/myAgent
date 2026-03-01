@@ -111,9 +111,12 @@ class ArchiveManager:
         event_dates: List[str],
         category: str = "",
         tags: List[str] = None,
+        comments: str = "",
+        keywords: List[str] = None,
+        crawler_version: str = "",
     ) -> str:
         """
-        마크다운 파일을 생성합니다.
+        마크다운 파일을 생성하거나 기존 파일을 업데이트합니다.
 
         Args:
             title: 포스트 제목
@@ -123,11 +126,13 @@ class ArchiveManager:
             event_dates: 이벤트 날짜 리스트
             category: 카테고리
             tags: 태그 리스트
+            comments: 코멘트 또는 내부 노트
+            keywords: 추출된 키워드 리스트
+            crawler_version: 이 크롤러 버전 (아카이브 업데이트 추적용)
 
         Returns:
             저장된 파일 경로
-        """
-        # 날짜 파싱 (유효하지 않으면 오늘 날짜 사용)
+        """        # 날짜 파싱 (유효하지 않으면 오늘 날짜 사용)
         date_part = None
         if isinstance(created_at, str) and created_at:
             if "T" in created_at:
@@ -152,7 +157,7 @@ class ArchiveManager:
         filename = self.generate_filename(created_at, title)
         filepath = os.path.join(archive_path, filename)
 
-        # Frontmatter 생성
+        # Frontmatter 생성 / 기존 파일이 있으면 병합
         frontmatter = {
             "title": title,
             "url": url,
@@ -160,12 +165,35 @@ class ArchiveManager:
             "event_dates": event_dates,
             "category": category,
             "tags": tags or [],
+            "comments": comments or "",
+            "keywords": keywords or [],
+            "crawler_version": crawler_version,
         }
+
+        # 기존 파일이 존재하면 frontmatter 병합 (버전 비교 등)
+        if os.path.exists(filepath):
+            existing = self._extract_frontmatter(Path(filepath)) or {}
+            # 보존할 필드들
+            for key in ["tags", "comments", "keywords"]:
+                if existing.get(key):
+                    # 기존 리스트인지 문자열인지 처리
+                    if isinstance(existing[key], list) and isinstance(frontmatter.get(key), list):
+                        # 합쳐서 중복 제거
+                        combined = existing[key] + frontmatter.get(key, [])
+                        frontmatter[key] = list(dict.fromkeys(combined))
+                    elif isinstance(existing[key], str):
+                        frontmatter[key] = frontmatter.get(key) or existing[key]
+            # 버전이 바뀌었으면 로그
+            if existing.get("crawler_version") and existing.get("crawler_version") != crawler_version:
+                print(f"[i] crawler_version 변경: {existing.get('crawler_version')} → {crawler_version} (파일 {filepath})")
+            # created_at 유지
+            if existing.get("created_at"):
+                frontmatter["created_at"] = existing.get("created_at")
 
         # 마크다운 내용 생성
         markdown_content = self._generate_markdown(frontmatter, content)
 
-        # 파일 저장
+        # 파일 저장 (덮어쓰기)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(markdown_content)
 
@@ -300,3 +328,25 @@ class ArchiveManager:
             return len(words)
         except Exception:
             return 0
+
+    def summarize_with_ollama(self, text: str) -> Optional[str]:
+        """Ollama CLI를 이용해 간단히 텍스트를 요약합니다.
+
+        Ollama가 설치되어 있지 않거나 실패하면 None을 반환합니다.
+        """
+        try:
+            import subprocess
+            # 최소한 문자열을 전달해 모델을 호출
+            proc = subprocess.run(
+                ["ollama", "run", "llama2", "--prompt", text],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if proc.returncode == 0:
+                return proc.stdout.strip()
+            else:
+                print(f"[!] Ollama 요약 오류: {proc.stderr}")
+        except Exception as e:
+            print(f"[!] Ollama 실행 실패: {e}")
+        return None
