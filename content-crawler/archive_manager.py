@@ -38,6 +38,24 @@ class ArchiveManager:
                 self._index_data = {"posts": []}
         return self._index_data
 
+    def is_archived(self, url: str) -> bool:
+        """
+        URL이 이미 아카이브되었는지 확인합니다.
+        
+        Args:
+            url: 확인할 URL
+            
+        Returns:
+            True if URL is already archived, False otherwise
+        """
+        index_data = self.load_index()
+        posts = index_data.get("posts", [])
+        
+        for post in posts:
+            if post.get("url") == url or post.get("link") == url:
+                return True
+        return False
+
     def get_archive_path(self, year: int, month: int) -> str:
         """아카이브 디렉토리 경로를 반환합니다."""
         path = os.path.join(self.archive_root, f"{year:04d}", f"{month:02d}")
