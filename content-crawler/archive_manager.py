@@ -114,6 +114,9 @@ class ArchiveManager:
         comments: str = "",
         keywords: List[str] = None,
         crawler_version: str = "",
+        images: List[Dict] = None,
+        raw_html: str = "",
+        raw_dir: str = None,
     ) -> str:
         """
         마크다운 파일을 생성하거나 기존 파일을 업데이트합니다.
@@ -168,19 +171,30 @@ class ArchiveManager:
             "comments": comments or "",
             "keywords": keywords or [],
             "crawler_version": crawler_version,
+            "images": images or [],
         }
 
         # 기존 파일이 존재하면 frontmatter 병합 (버전 비교 등)
         if os.path.exists(filepath):
             existing = self._extract_frontmatter(Path(filepath)) or {}
             # 보존할 필드들
-            for key in ["tags", "comments", "keywords"]:
+            for key in ["tags", "comments", "keywords", "images"]:
                 if existing.get(key):
-                    # 기존 리스트인지 문자열인지 처리
+                    # 목록 병합 처리
                     if isinstance(existing[key], list) and isinstance(frontmatter.get(key), list):
-                        # 합쳐서 중복 제거
-                        combined = existing[key] + frontmatter.get(key, [])
-                        frontmatter[key] = list(dict.fromkeys(combined))
+                        if key == "images":
+                            # 이미지 리스트는 url 기준으로 중복 제거
+                            seen = set()
+                            combined = []
+                            for img in existing[key] + frontmatter.get(key, []):
+                                url = img.get("url")
+                                if url and url not in seen:
+                                    seen.add(url)
+                                    combined.append(img)
+                            frontmatter[key] = combined
+                        else:
+                            combined = existing[key] + frontmatter.get(key, [])
+                            frontmatter[key] = list(dict.fromkeys(combined))
                     elif isinstance(existing[key], str):
                         frontmatter[key] = frontmatter.get(key) or existing[key]
             # 버전이 바뀌었으면 로그
@@ -196,6 +210,18 @@ class ArchiveManager:
         # 파일 저장 (덮어쓰기)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(markdown_content)
+
+        # 원본 HTML 저장
+        if raw_dir and raw_html:
+            try:
+                # raw_dir 아래에 동일한 연/월 구조로 저장
+                raw_path = os.path.join(raw_dir, str(year), f"{month:02d}")
+                os.makedirs(raw_path, exist_ok=True)
+                raw_file = os.path.join(raw_path, filename + ".html")
+                with open(raw_file, "w", encoding="utf-8") as rf:
+                    rf.write(raw_html)
+            except Exception as e:
+                print(f"[!] raw_html 저장 실패: {e}")
 
         return filepath
 

@@ -56,8 +56,11 @@ def save_metadata(posts, output_file):
     print(f"[+] 메타데이터 저장: {output_file} ({len(posts)}개)")
 
 
-def archive_posts(posts, archive_root="./archive", blog_id="default", summarize: bool = False):
-    """포스트를 아카이브에 저장합니다."""
+def archive_posts(posts, archive_root="./archive", blog_id="default", summarize: bool = False, raw_dir: str = None):
+    """포스트를 아카이브에 저장합니다.
+
+    raw_dir가 지정되면 각 포스트의 원본 HTML/Raw 데이터를 해당 디렉토리에 저장합니다 (로컬 전용).
+    """
     archive_mgr = ArchiveManager(archive_root)
     extractor = EventDateExtractor()
     archived_count = 0
@@ -83,6 +86,38 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
             from utils.keyword_extractor import extract_keywords
             keywords = extract_keywords(content or "", top_n=5)
 
+            # 이미지 메타 추출 함수
+            def extract_images(html_str):
+                images = []
+                try:
+                    from bs4 import BeautifulSoup
+                    import hashlib
+                    import requests
+
+                    soup = BeautifulSoup(html_str or "", "html.parser")
+                    for img in soup.find_all("img", src=True):
+                        url = img["src"]
+                        desc = img.get("alt", "")
+                        size = None
+                        sha = None
+                        try:
+                            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                            data = r.content
+                            size = len(data)
+                            sha = hashlib.sha256(data).hexdigest()
+                        except Exception:
+                            pass
+                        images.append({
+                            "url": url,
+                            "description": desc,
+                            "blog": blog_id,
+                            "size": size,
+                            "sha256": sha,
+                        })
+                except Exception:
+                    pass
+                return images
+
             # 요약 요청 시
             summary_text = ""
             if summarize and content:
@@ -92,6 +127,13 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
                         print(f"[+] Ollama 요약 생성 완료")
                 except Exception as e:
                     print(f"[!] 요약 생성 실패: {e}")
+
+            # 이미지 리스트 생성
+            html_for_images = post.get("html") or content or ""
+            images = extract_images(html_for_images)
+
+            # raw_html 준비 (있으면 html 저장)
+            raw_html = post.get("html") or ""
 
             # 마크다운 생성 및 저장 (create_markdown_file 사용)
             archive_mgr.create_markdown_file(
@@ -104,6 +146,9 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
                 comments=summary_text or comments,
                 keywords=keywords,
                 crawler_version=CRAWLER_VERSION,
+                images=images,
+                raw_html=raw_html,
+                raw_dir=raw_dir,
             )
             archived_count += 1
 
@@ -115,31 +160,57 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
 
 
 def crawl_naver_blog(config: Dict, args):
-    """네이버 블로그 크롤링"""
+    """네이버 블로그 크롤링
+
+    config 플랫폼 섹션에서 blogs 리스트를 읽어 여러 블로그를 순회합니다.
+    또한 CLI의 --naver-blog 옵션을 통해 수동 블로그 ID를 추가로 크롤할 수 있습니다.
+    """
     naver_config = config.get("platforms", {}).get("naver_blog", {})
     if not naver_config.get("enabled"):
         return []
 
-    blog_id = naver_config.get("blog_id", "boyinblue")
-    request_interval = naver_config.get("request_interval_seconds", 1.0)
-    rss_url = naver_config.get("rss_url")
+    # 기본 블로그 목록
+    blogs = []
+    if isinstance(naver_config.get("blogs"), list):
+        blogs = naver_config.get("blogs")
+    else:
+        # 이전 구조 호환성
+        blogs = [{
+            "blog_id": naver_config.get("blog_id", "boyinblue"),
+            "rss_url": naver_config.get("rss_url"),
+            "request_interval_seconds": naver_config.get("request_interval_seconds", 1.0),
+        }]
 
-    print(f"\n[*] 네이버 블로그 크롤링 시작 (블로그: {blog_id})")
-    print(f"[*] 요청 간격: {request_interval}초")
+    # CLI에 추가된 블로그 ID 처리
+    if args.naver_blog:
+        for bid in args.naver_blog:
+            blogs.append({"blog_id": bid, "rss_url": None, "request_interval_seconds": 1.0})
 
-    crawler = NaverBlogCrawler(blog_id, rss_url=rss_url, request_interval=request_interval)
-    posts = crawler.crawl(
-        fetch_content=args.fetch_content,
-        max_posts=args.max_posts,
-        full=args.full,
-        follow_internal=args.follow_internal,
-    )
+    all_posts = []
+    archive_root = config.get("archive_root", "./archive")
+    raw_dir = config.get("raw_directory")
 
-    if posts:
-        archive_root = config.get("archive_root", "./archive")
-        archive_posts(posts, archive_root, blog_id, summarize=args.summarize)
+    for info in blogs:
+        blog_id = info.get("blog_id")
+        request_interval = info.get("request_interval_seconds", 1.0)
+        rss_url = info.get("rss_url")
 
-    return posts
+        print(f"\n[*] 네이버 블로그 크롤링 시작 (블로그: {blog_id})")
+        print(f"[*] 요청 간격: {request_interval}초")
+
+        crawler = NaverBlogCrawler(blog_id, rss_url=rss_url, request_interval=request_interval)
+        posts = crawler.crawl(
+            fetch_content=args.fetch_content,
+            max_posts=args.max_posts,
+            full=args.full,
+            follow_internal=args.follow_internal,
+        )
+
+        if posts:
+            archive_posts(posts, archive_root, blog_id, summarize=args.summarize, raw_dir=raw_dir)
+            all_posts.extend(posts)
+
+    return all_posts
 
 
 def crawl_tistory_blogs(config: Dict, args):
@@ -167,7 +238,8 @@ def crawl_tistory_blogs(config: Dict, args):
 
         if posts:
             archive_root = config.get("archive_root", "./archive")
-            archive_posts(posts, archive_root, blog_name, summarize=args.summarize)
+            raw_dir = config.get("raw_directory")
+            archive_posts(posts, archive_root, blog_name, summarize=args.summarize, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
@@ -198,7 +270,8 @@ def crawl_github_pages(config: Dict, args):
 
         if posts:
             archive_root = config.get("archive_root", "./archive")
-            archive_posts(posts, archive_root, blog_name, summarize=args.summarize)
+            raw_dir = config.get("raw_directory")
+            archive_posts(posts, archive_root, blog_name, summarize=args.summarize, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
@@ -229,7 +302,8 @@ def crawl_youtube(config: Dict, args):
 
         if videos:
             archive_root = config.get("archive_root", "./archive")
-            archive_posts(videos, archive_root, channel_name, summarize=args.summarize)
+            raw_dir = config.get("raw_directory")
+            archive_posts(videos, archive_root, channel_name, summarize=args.summarize, raw_dir=raw_dir)
             all_videos.extend(videos)
 
     return all_videos
@@ -327,6 +401,11 @@ def main():
         "--no-error-report",
         action="store_true",
         help="에러가 발생해도 텔레그램으로 보고하지 않습니다",
+    )
+    parser.add_argument(
+        "--naver-blog",
+        action="append",
+        help="추가로 수동 크롤링할 네이버 블로그 ID를 지정 (여러 개 반복 가능)",
     )
 
     args = parser.parse_args()

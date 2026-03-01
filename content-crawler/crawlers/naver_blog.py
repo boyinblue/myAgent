@@ -103,8 +103,11 @@ class NaverBlogCrawler:
 
         return posts
 
-    def fetch_post_content(self, post_url: str) -> Optional[str]:
-        """포스트 본문을 가져옵니다."""
+    def fetch_post_content(self, post_url: str) -> Dict[str,str]:
+        """포스트 본문과 원본 HTML을 가져옵니다.
+
+        Returns dict with keys 'text' and 'html'.
+        """
         try:
             print(f"[*] 포스트 본문 다운로드: {post_url}")
             response = requests.get(post_url, headers=self.headers, timeout=10)
@@ -112,7 +115,8 @@ class NaverBlogCrawler:
             response.raise_for_status()
 
             # HTML 파싱
-            soup = BeautifulSoup(response.text, "html.parser")
+            html = response.text
+            soup = BeautifulSoup(html, "html.parser")
 
             # 네이버 블로그 본문 영역 찾기
             # (다양한 선택자 시도)
@@ -124,22 +128,25 @@ class NaverBlogCrawler:
 
             if not content_div:
                 print(f"[!] 본문 영역을 찾을 수 없습니다.")
-                return ""
+                return {"text": "", "html": html}
 
             # 텍스트 추출
             text = content_div.get_text(separator="\n", strip=True)
-            return text
+            return {"text": text, "html": str(content_div)}
 
         except Exception as e:
             print(f"[ERROR] 본문 다운로드 실패 ({post_url}): {e}")
-            return ""
+            return {"text": "", "html": ""}
 
     def fetch_post_with_content(self, post_url: str, post_data: Dict) -> Dict:
-        """포스트 메타데이터 + 본문을 함께 반환합니다."""
-        content = self.fetch_post_content(post_url)
+        """포스트 메타데이터 + 본문(및 html)을 함께 반환합니다."""
+        result = self.fetch_post_content(post_url)
+        text = result.get("text", "")
+        html = result.get("html", "")
 
         enriched_post = post_data.copy()
-        enriched_post["content"] = content
+        enriched_post["content"] = text
+        enriched_post["html"] = html
 
         # 속도 제한
         time.sleep(self.request_interval)

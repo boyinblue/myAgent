@@ -2,10 +2,30 @@
   "platforms": {
     "naver_blog": {
       "enabled": true,
-      "blog_id": "boyinblue",
-      "rss_url": "https://rss.blog.naver.com/boyinblue.xml",
-      "request_interval_seconds": 0.5
+      "blogs": [
+        {
+          "blog_id": "boyinblue",
+          "rss_url": "https://rss.blog.naver.com/boyinblue.xml",
+          "request_interval_seconds": 0.5
+        },
+        {
+          "blog_id": "pgi100",
+          "rss_url": "https://rss.blog.naver.com/pgi100.xml",
+          "request_interval_seconds": 0.5
+        },
+        {
+          "blog_id": "sadneye",
+          "rss_url": "https://rss.blog.naver.com/sadneye.xml",
+          "request_interval_seconds": 0.5
+        },
+        {
+          "blog_id": "parksejin03",
+          "rss_url": "https://rss.blog.naver.com/parksejin03.xml",
+          "request_interval_seconds": 0.5
+        }
+      ]
     },
+    "tistory": {
     "tistory": {
       "enabled": true,
       "blogs": [
@@ -55,5 +75,6 @@
   },
   "output_directory": "./storage",
   "archive_root": "../archive",
+  "raw_directory": "./raw",  
   "log_level": "INFO"
 }
