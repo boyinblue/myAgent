@@ -5,6 +5,7 @@
 import feedparser
 import requests
 import re
+import json
 from typing import List, Dict, Optional
 import time
 
@@ -52,10 +53,44 @@ class YouTubeCrawler:
             resp = requests.get(url, headers=self.headers, timeout=10)
             resp.raise_for_status()
 
-            # HTML에서 채널 ID 찾기
+            # 방법 1: JSON-LD 스트럭처드 데이터에서 찾기
+            match = re.search(r'"@type":"Channel"[^}]*"identifier":"([^"]+)"', resp.text)
+            if match:
+                channel_id = match.group(1).replace("@", "").strip()
+                if channel_id.startswith("UC"):
+                    return channel_id
+            
+            # 방법 2: var ytInitialData = {...} 에서 찾기
             match = re.search(r'"channelId":"(UC[a-zA-Z0-9_-]{22})"', resp.text)
             if match:
                 return match.group(1)
+            
+            # 방법 3: ytInitialData에서 다른 경로로 찾기
+            match = re.search(r'var ytInitialData = ({.*?});', resp.text)
+            if match:
+                try:
+                    data = json.loads(match.group(1))
+                    # 재귀적으로 channelId 찾기
+                    def find_channel_id(obj):
+                        if isinstance(obj, dict):
+                            if "channelId" in obj and obj["channelId"].startswith("UC"):
+                                return obj["channelId"]
+                            for v in obj.values():
+                                result = find_channel_id(v)
+                                if result:
+                                    return result
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                result = find_channel_id(item)
+                                if result:
+                                    return result
+                        return None
+                    
+                    channel_id = find_channel_id(data)
+                    if channel_id:
+                        return channel_id
+                except Exception:
+                    pass
 
             print(f"[!] HTML에서 채널 ID를 찾을 수 없습니다.")
         except Exception as e:
