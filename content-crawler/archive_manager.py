@@ -235,7 +235,13 @@ class ArchiveManager:
             if isinstance(value, list):
                 lines.append(f"{key}:")
                 for item in value:
-                    lines.append(f"  - \"{item}\"")
+                    # handle dictionary items (e.g. image metadata)
+                    if isinstance(item, dict):
+                        lines.append(f"  -")
+                        for subkey, subval in item.items():
+                            lines.append(f"      {subkey}: \"{subval}\"")
+                    else:
+                        lines.append(f"  - \"{item}\"")
             else:
                 lines.append(f"{key}: \"{value}\"")
 
