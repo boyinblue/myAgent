@@ -77,3 +77,34 @@ class TelegramNotifier:
             message += f"\n... 외 {len(items) - 50}개 항목"
 
         return self.send_message(message)
+
+    def send_errors(self, errors: List[str]) -> bool:
+        """
+        에러 메시지 리스트를 발송합니다.
+
+        Args:
+            errors: 에러 메시지 리스트
+
+        Returns:
+            성공 여부
+        """
+        if not errors:
+            return False
+
+        message = "<b>❌ 크롤링 중 발생한 에러들:</b>\n\n"
+        for i, error in enumerate(errors[:20], 1):  # 최대 20개까지만
+            message += f"{i}. <code>{self._escape_html(error)}</code>\n"
+
+        if len(errors) > 20:
+            message += f"\n... 외 {len(errors) - 20}개 에러"
+
+        return self.send_message(message)
+
+    @staticmethod
+    def _escape_html(text: str) -> str:
+        """HTML 특수 문자 이스케이프"""
+        text = text.replace("&", "&amp;")
+        text = text.replace("<", "&lt;")
+        text = text.replace(">", "&gt;")
+        text = text.replace('"', "&quot;")
+        return text

@@ -25,6 +25,7 @@ from crawlers.youtube import YouTubeCrawler
 from archive_manager import ArchiveManager
 from event_date_extractor import EventDateExtractor
 from utils.telegram_notifier import TelegramNotifier
+from utils.error_collector import ErrorCollector
 from scheduler import DailyDigestScheduler
 
 
@@ -339,24 +340,38 @@ def main():
     # 크롤링 모드
     print("[*] 크롤링 시작...")
     all_posts: List[Dict] = []
+    
+    # 에러 수집 시작
+    error_collector = ErrorCollector()
+    
+    with error_collector:
+        # 각 플랫폼별 크롤링
+        if not args.no_archive:
+            naver_posts = crawl_naver_blog(config, args)
+            all_posts.extend(naver_posts)
 
-    # 각 플랫폼별 크롤링
-    if not args.no_archive:
-        naver_posts = crawl_naver_blog(config, args)
-        all_posts.extend(naver_posts)
+            tistory_posts = crawl_tistory_blogs(config, args)
+            all_posts.extend(tistory_posts)
 
-        tistory_posts = crawl_tistory_blogs(config, args)
-        all_posts.extend(tistory_posts)
+            github_posts = crawl_github_pages(config, args)
+            all_posts.extend(github_posts)
 
-        github_posts = crawl_github_pages(config, args)
-        all_posts.extend(github_posts)
-
-        youtube_videos = crawl_youtube(config, args)
-        all_posts.extend(youtube_videos)
+            youtube_videos = crawl_youtube(config, args)
+            all_posts.extend(youtube_videos)
 
     print("\n" + "=" * 60)
     print(f"[+] 모든 작업 완료! (총 {len(all_posts)}개 항목 수집)")
+    if error_collector.has_errors():
+        print(f"[!] 에러 {len(error_collector.errors)}개 발생")
     print("=" * 60)
+    
+    # 에러가 있으면 텔레그램으로 전송
+    if error_collector.has_errors():
+        notifier = TelegramNotifier()
+        if notifier.is_configured():
+            notifier.send_errors(error_collector.errors)
+        else:
+            print("[!] 텔레그램이 설정되지 않아 에러를 전송할 수 없습니다.")
 
 
 if __name__ == "__main__":
