@@ -48,8 +48,8 @@ YOUTUBE_API_KEY=your_api_key_here
       "request_interval_seconds": 0.5
     },
     {
-      "name": "worlclassproduct",
-      "blog_url": "https://worlclassproduct.tistory.com",
+      "name": "worldclassproduct",
+      "blog_url": "https://worldclassproduct.tistory.com",
       "request_interval_seconds": 0.5
     }
   ]
@@ -118,6 +118,15 @@ python main.py --full --follow-internal --use-sitemap
 
 # 텔레그램으로 본문 포함해서 발송
 python main.py --fetch-content
+
+# 에러 보고를 비활성화
+python main.py --no-error-report
+```
+
+**아카이브 확장**
+- 크롤러가 업데이트되면 기존 파일도 재작성됩니다 (`crawler_version` 저장).
+- 게시물 정보에 태그, 요약(코멘트), 주요 키워드가 자동으로 추가됩니다.
+- 수집된 메타데이터는 Frontmatter에 보존되며 중복 없이 병합됩니다.
 
 # 최대 50개까지만 (테스트)
 python main.py --max-posts 50
