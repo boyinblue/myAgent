@@ -5,7 +5,8 @@ import sys
 
 # --- [사용자 환경 맞춤 설정] ---
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "gemma2:9b-instruct-q4_K_M"
+#MODEL_NAME = "gemma2:9b-instruct-q4_K_M"
+MODEL_NAME = "gemma2:9b"
 
 def run_command(command):
     """터미널 명령어를 실행하고 결과를 반환합니다."""
@@ -60,6 +61,8 @@ def main():
     if not diff:
         print("❌ 변경사항이 감지되지 않았습니다.")
         return
+
+    print(f"📄 감지된 변경사항:\n{diff[:500]}...\n")
 
     print(f"🤖 로컬 AI({MODEL_NAME})가 GPU로 변경점을 분석 중입니다...")
     commit_msg = generate_commit_message(diff)

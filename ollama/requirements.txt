@@ -1,0 +1,7 @@
+ollama
+langchain
+langchain-community
+faiss-cpu
+langchain-text-splitters
+langchain-ollama
+unstructured[md]
