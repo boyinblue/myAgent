@@ -83,16 +83,15 @@ class TistoryBlogCrawler:
             return []
         posts = self.parse_feed_entries(feed, max_posts)
 
-        if use_sitemap and (max_posts is None or len(posts) < max_posts):
-            print("[i] 사이트맵 옵션 활성화: sitemap.xml에서 추가 링크를 수집합니다.")
-            sitemap_posts = self.fetch_sitemap()
-            existing = {p["link"] for p in posts}
-            for sp in sitemap_posts:
-                if max_posts and len(posts) >= max_posts:
-                    break
-                if sp["link"] not in existing:
-                    posts.append(sp)
-                    existing.add(sp["link"])
+        print("sitemap.xml에서 추가 링크를 수집합니다.")
+        sitemap_posts = self.fetch_sitemap()
+        existing = {p["link"] for p in posts}
+        for sp in sitemap_posts:
+            if max_posts and len(posts) >= max_posts:
+                break
+            if sp["link"] not in existing:
+                posts.append(sp)
+                existing.add(sp["link"])
 
         print(f"[+] 총 {len(posts)}개 포스트 크롤링 완료")
         return posts

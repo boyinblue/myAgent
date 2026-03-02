@@ -62,7 +62,7 @@ class ArchiveManager:
         os.makedirs(path, exist_ok=True)
         return path
 
-    def generate_filename(self, created_date: str, title: str) -> str:
+    def generate_filename(self, created_year, created_month, created_day, platform_type, media_name, title: str) -> str:
         """
         마크다운 파일명을 생성합니다.
 
@@ -74,15 +74,12 @@ class ArchiveManager:
             파일명 (YYYY-MM-DD-title.md 형식)
         """
         # 날짜 파싱
-        if "T" in created_date:
-            date_part = created_date.split("T")[0]
-        else:
-            date_part = created_date
+        date_part = f"{created_year:04d}-{created_month:02d}-{created_day:02d}"
 
         # 제목 정제 (마크다운 파일명으로 사용 가능하도록)
         title_slug = self._slugify_title(title)
 
-        return f"{date_part}-{title_slug}.md"
+        return f"{date_part}-{platform_type}-{media_name}-{title_slug}.md"
 
     @staticmethod
     def _slugify_title(title: str, max_length: int = 50) -> str:
@@ -102,10 +99,39 @@ class ArchiveManager:
         slug = slug[:max_length].rstrip("-")
         return slug or "untitled"
 
+    @staticmethod
+    def _slugify_created_date(created_date: str):
+        """작성 날짜를 [year, month, day] 리스트로 변환합니다."""
+        date_obj = None
+
+        if isinstance(created_date, str) and created_date:
+            # 1. RFC 2822 (네이버 RSS 등)
+            try:
+                import email.utils
+                date_obj = email.utils.parsedate_to_datetime(created_date)
+            except:
+                pass
+
+            # 2. ISO 8601 (T 포함) 또는 YYYY-MM-DD
+            if not date_obj:
+                try:
+                    clean_date = created_date.split("T")[0] if "T" in created_date else created_date[:10]
+                    date_obj = datetime.strptime(clean_date, "%Y-%m-%d")
+                except:
+                    pass
+
+        # 3. 파싱 실패 시 현재 시간 (UTC)
+        if not date_obj:
+            date_obj = datetime.now(timezone.utc)
+
+        return date_obj.year, date_obj.month, date_obj.day
+
     def create_markdown_file(
         self,
         title: str,
         url: str,
+        platform_type: str,
+        media_name: str,
         content: str,
         created_at: str,
         event_dates: List[str],
@@ -124,6 +150,7 @@ class ArchiveManager:
         Args:
             title: 포스트 제목
             url: 원본 URL
+            platform_type: 플랫폼 타입 (예: NaverBlog, Tistory 등)
             content: 포스트 본문
             created_at: 작성 날짜 (YYYY-MM-DDTHH:MM:SS 형식)
             event_dates: 이벤트 날짜 리스트
@@ -136,34 +163,25 @@ class ArchiveManager:
         Returns:
             저장된 파일 경로
         """        # 날짜 파싱 (유효하지 않으면 오늘 날짜 사용)
-        date_part = None
-        if isinstance(created_at, str) and created_at:
-            if "T" in created_at:
-                date_part = created_at.split("T")[0]
-            else:
-                date_part = created_at
-        if not date_part:
-            date_part = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-        # 안전하게 숫자로 변환
-        try:
-            year, month, day = int(date_part[:4]), int(date_part[5:7]), int(date_part[8:10])
-        except Exception:
-            # 형식 오류 시 오늘 날짜로 대체
-            ymd = datetime.now(timezone.utc).strftime("%Y-%m-%d").split("-")
-            year, month, day = int(ymd[0]), int(ymd[1]), int(ymd[2])
+        year, month, day = self._slugify_created_date(created_at)
 
         # 디렉토리 경로
         archive_path = self.get_archive_path(year, month)
 
         # 파일명
-        filename = self.generate_filename(created_at, title)
+        filename = self.generate_filename(year, month, day, platform_type, media_name, title)
         filepath = os.path.join(archive_path, filename)
+
+        # URL
+        if url and url.startswith("http://blog.naver.com") and "?" in url:
+            url = url.split("?")[0]
 
         # Frontmatter 생성 / 기존 파일이 있으면 병합
         frontmatter = {
             "title": title,
             "url": url,
+            "platform": platform_type,
+            "media_name": media_name,
             "created_at": created_at,
             "event_dates": event_dates,
             "category": category,
@@ -278,6 +296,10 @@ class ArchiveManager:
                     post_meta = self._extract_frontmatter(md_file)
                     if post_meta:
                         post_meta["id"] = post_id
+                        post_meta["url"] = post_meta.get("url")
+                        if post_meta["url"] and post_meta["url"].startswith("https://blog.naver.com"):
+                            # 네이버 블로그 URL에서 쿼리 파라미터 제거
+                            post_meta["url"] = post_meta["url"].split("?")[0]
                         post_meta["file_path"] = str(md_file.relative_to(self.archive_root))
                         post_meta["archived"] = True
                         post_meta["word_count"] = self._count_words(md_file)

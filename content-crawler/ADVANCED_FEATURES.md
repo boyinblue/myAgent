@@ -14,12 +14,10 @@
 
 **예시:**
 ```bash
-python main.py --full --follow-internal --max-posts 200
+python main.py --max-posts 200
 ```
 이렇게 하면:
 1. RSS에서 50개 기본 로드
-2. `--full`로 리스트 페이지 순회 (추가 몇십~몇백 개)
-3. `--follow-internal`로 각 포스트 본문에서 내부 링크 수집 (더 추가)
 
 ---
 
@@ -50,10 +48,8 @@ python main.py --use-sitemap --fetch-content
 
 | 목표 | 명령어 | 설명 |
 |------|--------|------|
-| 네이버 최대한 많이 | `--full --follow-internal` | 리스트 페이지 + 내부 링크 |
 | 네이버 빠르게 테스트 | `--max-posts 50` | 기본 RSS만 (500개 HTTP 요청 절약) |
-| 티스토리 전체 | `--use-sitemap --fetch-content` | 사이트맵으로 모두 수집 및 저장 |
-| 둘 다 최대한 | `--full --follow-internal --use-sitemap` | (순차적으로 처리) |
+| 티스토리 전체 | `--use-sitemap'  | 사이트맵으로 모두 수집 |
 
 ---
 

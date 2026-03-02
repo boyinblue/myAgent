@@ -48,7 +48,7 @@ content-crawler/
 ### 사양
 
 - **RSS 주소**: `https://rss.blog.naver.com/{blogId}.xml` (또는 구형 `http://blog.naver.com/RSS/{blogId}`)
-  *주의*: 네이버 RSS는 최대 50개 정도의 최근 글만 노출합니다. 이전 글까지 전부 저장하려면 `--full` 옵션을 사용하여 리스트 페이지를 크롤링하세요. 이 방식은 더 많은 HTTP 요청을 필요로 하며 속도 제한을 지켜야 합니다.
+  *주의*: 네이버 RSS는 최대 50개 정도의 최근 글만 노출합니다.
   
   > **한계점 및 해결책**
   > 
@@ -120,15 +120,9 @@ python main.py [옵션]
 ```
 
 옵션 예:
-- `--full`: 리스트 페이지까지 따라가 RSS에 없는 옛날 글도 최대한 수집
-- `--follow-internal`: 크롤한 포스트 본문에서 같은 블로그의 다른 포스트 URL도 찾아 추가
 - `--use-sitemap`: 티스토리의 `sitemap.xml`을 읽어 가능한 모든 링크 수집
 - `--max-posts N`: 테스트용으로 최대 N개까지만
-- `--fetch-content`: 메타데이터뿐 아니라 본문도 가져옴
-- `--summarize`: Ollama 요약 추가
 - `--no-archive`: 인덱스만 갱신, 아카이브 생성을 건너뜀
-
-주의: `--follow-internal`과 `--full`은 추가 HTTP 요청을 발생시키므로 요청 간격 설정에 유의하세요.
 
 ### PowerShell로 실행
 

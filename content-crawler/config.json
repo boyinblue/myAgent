@@ -1,24 +1,40 @@
 {
   "platforms": {
+    "youtube": {
+      "enabled": true,
+      "channels": [
+        {
+          "platform_type": "YouTube",
+          "name": "saejinpark",
+          "channel_url": "https://www.youtube.com/@saejinpark4614",
+          "channel_id": "UCAOYhSq2f01-jclmcw1IS3g",
+          "request_interval_seconds": 1.0
+        }
+      ]
+    },
     "naver_blog": {
       "enabled": true,
       "blogs": [
         {
+          "platform_type": "NaverBlog",
           "blog_id": "boyinblue",
           "rss_url": "https://rss.blog.naver.com/boyinblue.xml",
           "request_interval_seconds": 0.5
         },
         {
+          "platform_type": "NaverBlog",
           "blog_id": "pgi100",
           "rss_url": "https://rss.blog.naver.com/pgi100.xml",
           "request_interval_seconds": 0.5
         },
         {
+          "platform_type": "NaverBlog",
           "blog_id": "sadneye",
           "rss_url": "https://rss.blog.naver.com/sadneye.xml",
           "request_interval_seconds": 0.5
         },
         {
+          "platform_type": "NaverBlog",
           "blog_id": "parksejin03",
           "rss_url": "https://rss.blog.naver.com/parksejin03.xml",
           "request_interval_seconds": 0.5
@@ -29,11 +45,13 @@
       "enabled": true,
       "blogs": [
         {
+          "platform_type": "Tistory",
           "name": "frankler",
           "blog_url": "https://frankler.tistory.com",
           "request_interval_seconds": 0.5
         },
         {
+          "platform_type": "Tistory",
           "name": "worldclassproduct",
           "blog_url": "https://worldclassproduct.tistory.com",
           "request_interval_seconds": 0.5
@@ -44,23 +62,15 @@
       "enabled": true,
       "blogs": [
         {
-          "name": "boyinblue",
+          "platform_type": "GitHubPages",
+          "name": "boyinblue-GitHubPages",
           "blog_url": "https://boyinblue.github.io",
           "request_interval_seconds": 1.0
         },
         {
-          "name": "esregnet0409",
+          "platform_type": "GitHubPages",
+          "name": "esregnet0409-GitHubPages",
           "blog_url": "https://esregnet0409.github.io",
-          "request_interval_seconds": 1.0
-        }
-      ]
-    },
-    "youtube": {
-      "enabled": true,
-      "channels": [
-        {
-          "name": "saejinpark",
-          "channel_url": "https://www.youtube.com/@saejinpark4614",
           "request_interval_seconds": 1.0
         }
       ]

@@ -1,4 +1,4 @@
-# 콘텐츠 크롤러 v2.1 - 최종 구현 설명
+# 콘텐츠 크롤러 v2.2 - 최종 구현 설명
 
 ## 🎯 완성된 기능
 
@@ -14,10 +14,7 @@
 ### 2. 고급 크롤링 옵션 ✅
 
 ```bash
---full              # RSS의 한계를 넘어 리스트 페이지까지 크롤
---follow-internal   # 본문 내 같은 블로그 링크 자동 수집
 --use-sitemap       # Tistory sitemap.xml 활용
---fetch-content     # 포스트 본문도 함께 저장
 ```
 
 ### 3. 민감한 정보 관리 ✅
@@ -97,7 +94,7 @@ event_date_extractor.py # 포스트 내 이벤트 날짜 추출
 ### 시나리오 1: 전체 크롤링 (처음 설정)
 
 ```bash
-python main.py --full --follow-internal --use-sitemap --fetch-content
+python main.py --use-sitemap
 ```
 
 결과:
@@ -174,7 +171,7 @@ python main.py --schedule
     "youtube": {
       "enabled": true,
       "channels": [
-        {"name": "saejinpark", "channel_url": "https://www.youtube.com/@saejinpark4614", ...}
+        {"name": "saejinpark", "channel_url": "https://www.youtube.com/@saejinpark4614", "channel_id": "UCAOYhSq2f01-jclmcw1IS3g", ...}
       ]
     }
   },

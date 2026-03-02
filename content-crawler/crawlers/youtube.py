@@ -2,6 +2,7 @@
 # 파일 인코딩: UTF-8
 """유튜브 채널 크롤러"""
 
+import os
 import feedparser
 import requests
 import re
@@ -10,6 +11,13 @@ from collections import Counter
 from typing import List, Dict, Optional
 import time
 
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
+
+# 환경 변수에서 설정값 가져오기
+GOOGLE_KEY = os.getenv("GOOGLE_API_KEY")
 
 class YouTubeCrawler:
     """유튜브 채널의 영상을 크롤링합니다."""
@@ -29,9 +37,11 @@ class YouTubeCrawler:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
 
+        print(f"[*] YouTubeCrawler 초기화: channel_id={self.channel_id}, channel_url={self.channel_url}")
+
         # 채널 URL이 주어졌으면 채널 ID 추출 시도
         if not self.channel_id and self.channel_url:
-            self.channel_id = self._extract_channel_id_from_url(channel_url)
+            self.channel_id = self._extract_channel_id_from_url(self.channel_url)
 
     def _extract_channel_id_from_url(self, url: str) -> Optional[str]:
         """
@@ -146,12 +156,24 @@ class YouTubeCrawler:
 
             return feed
         except Exception as e:
-            print(f"[ERROR] 유튜브 RSS 가져오기 실패: {e}")
+            print(f"[!] 유튜브 RSS 가져오기 실패: {e}")
             return None
 
-    def parse_feed_entries(self, feed: feedparser.FeedParserDict, max_videos: int = None) -> List[Dict]:
+    def append_video(self, videos: List[Dict], title, published, link, video_id, summary, author) -> List[Dict]:
+        """영상 정보를 리스트에 추가합니다."""
+        video = {
+            "title": title,
+            "published": published,
+            "link": link,
+            "video_id": video_id,
+            "summary": summary,
+            "author": author,
+        }
+        videos.append(video)
+        return videos
+
+    def parse_feed_entries(self, videos, feed: feedparser.FeedParserDict, max_videos: int = None) -> List[Dict]:
         """RSS 피드에서 영상 정보를 추출합니다."""
-        videos: List[Dict] = []
 
         if not feed or not feed.entries:
             print("[!] 피드에 항목이 없습니다.")
@@ -174,10 +196,46 @@ class YouTubeCrawler:
                 "summary": entry.get("summary", ""),
                 "author": entry.get("author", ""),
             }
-            videos.append(video)
+            videos = self.append_video(videos, **video)
             time.sleep(self.request_interval * 0.1)  # RSS 파싱은 덜 무거움
 
         return videos
+
+    def get_latest_videos(self, videos, channel_id, max_results=5):
+        # API 엔드포인트 설정
+        url = "https://www.googleapis.com/youtube/v3/search"
+
+        params = {
+            "key": GOOGLE_KEY,
+            "channelId": channel_id,
+            "part": "snippet,id",
+            "order": "date",       # 최신순 정렬
+            "maxResults": max_results,
+            "type": "video"        # 플레이리스트 등을 제외하고 영상만 추출
+        }
+
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()  # 4xx, 5xx 에러 시 예외 발생
+
+            data = response.json()
+            print(f"[*] API 호출 성공: {len(data.get('items', []))}개의 영상을 찾았습니다.")
+
+            for item in data.get("items", []):
+                video = {
+                    "title": item["snippet"]["title"],
+                    "published": item["snippet"]["publishedAt"],
+                    "link": f"https://youtu.be/{item['id']['videoId']}",
+                    "video_id": item["id"]["videoId"],
+                    "summary": item["snippet"].get("description", ""),
+                    "author": item["snippet"].get("channelTitle", ""),
+                }
+                videos = self.append_video(videos, **video)
+
+        except requests.exceptions.HTTPError as e:
+            print(f"[!] API 호출 실패: {e}")
+            if response.status_code == 403:
+                print(">> 힌트: Google Cloud Console에서 'YouTube Data API v3'가 활성화되어 있는지 확인하세요.")
 
     def crawl(self, max_videos: int = None) -> List[Dict]:
         """
@@ -195,10 +253,12 @@ class YouTubeCrawler:
             print("[ERROR] 채널 ID가 없어 크롤링할 수 없습니다.")
             return []
 
-        feed = self.fetch_rss()
-        if not feed:
-            return []
+        videos: List[Dict] = []
 
-        videos = self.parse_feed_entries(feed, max_videos)
-        print(f"[+] 총 {len(videos)}개 영상 크롤링 완료")
-        return videos
+        # RSS 피드 가져오기
+        feed = self.fetch_rss()
+        if feed:
+            videos = self.parse_feed_entries(videos, feed, max_videos)
+            print(f"[+] 총 {len(videos)}개 영상 크롤링 완료")
+
+        self.get_latest_videos(videos, self.channel_id, max_results=max_videos)

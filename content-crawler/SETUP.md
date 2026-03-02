@@ -13,8 +13,8 @@ TELEGRAM_BOT_TOKEN=your_bot_token_here
 # 텔레그램 채팅 ID (수신자 전화번호 또는 채팅 ID)
 TELEGRAM_CHAT_ID=82109175-8526
 
-# YouTube API (선택)
-YOUTUBE_API_KEY=your_api_key_here
+# Google API (선택)
+GOOGLE_API_KEY=your_api_key_here
 ```
 
 **텔레그램 설정하기:**
@@ -113,8 +113,8 @@ python main.py
 ### 특정 옵션과 함께
 
 ```bash
-# 이전 글도 포함 + 내부 링크 추가
-python main.py --full --follow-internal --use-sitemap
+# Sitemap 활용
+python main.py --use-sitemap
 
 # 텔레그램으로 본문 포함해서 발송
 python main.py --fetch-content

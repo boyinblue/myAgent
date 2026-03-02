@@ -56,7 +56,7 @@ def save_metadata(posts, output_file):
     print(f"[+] 메타데이터 저장: {output_file} ({len(posts)}개)")
 
 
-def archive_posts(posts, archive_root="./archive", blog_id="default", summarize: bool = False, raw_dir: str = None):
+def archive_posts(posts, archive_root="./archive", platform_type="", media_name="", raw_dir: str = None):
     """포스트를 아카이브에 저장합니다.
 
     HTML이 제공된 포스트에서는 본문에서 이미지를 찾아 메타데이터(주소, 설명, 크기, SHA256)를 추출하고
@@ -75,12 +75,20 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
             content = post.get("content", "")
             published = post.get("published", "")
             tags = post.get("tags") or []
-            comments = post.get("summary") or ""
+            summary = post.get("summary") or ""
+            comments = post.get("comments") or ""
+
+            if link.startswith("https://blog.naver.com") and "?" in link:
+                link = link.split("?")[0]
 
             # 중복 확인
             if archive_mgr.is_archived(link):
                 print(f"[i] 이미 아카이브됨, 건너뜁니다: {link}")
+                post["new"] = False
                 continue
+
+            # 발견된 링크를 아카이브에 저장
+            print(f"[*] 아카이브 저장 중: {title} ({link})")
 
             # 이벤트 날짜 추출
             extracted_dates = extractor.extract(content) if content else []
@@ -113,7 +121,7 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
                         images.append({
                             "url": url,
                             "description": desc,
-                            "blog": blog_id,
+                            "blog": media_name,
                             "size": size,
                             "sha256": sha,
                         })
@@ -121,9 +129,9 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
                     pass
                 return images
 
-            # 요약 요청 시
+            # ollama를 이용한 요약 시도
             summary_text = ""
-            if summarize and content:
+            if content:
                 try:
                     summary_text = archive_mgr.summarize_with_ollama(content) or ""
                     if summary_text:
@@ -142,6 +150,8 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
             archive_mgr.create_markdown_file(
                 title=title,
                 url=link,
+                platform_type=platform_type,
+                media_name=media_name,
                 content=content or "(본문 없음)",
                 created_at=published,
                 event_dates=extracted_dates,
@@ -154,12 +164,13 @@ def archive_posts(posts, archive_root="./archive", blog_id="default", summarize:
                 raw_dir=raw_dir,
             )
             archived_count += 1
+            post["new"] = True
 
         except Exception as e:
             print(f"[!] 아카이브 실패 ({title}): {e}")
 
     print(f"[+] {archived_count}개 포스트를 아카이브에 저장했습니다")
-    archive_mgr.update_index(blog_id, platform="mixed")
+    archive_mgr.update_index(media_name, platform="mixed")
 
 
 def crawl_naver_blog(config: Dict, args):
@@ -179,6 +190,7 @@ def crawl_naver_blog(config: Dict, args):
     else:
         # 이전 구조 호환성
         blogs = [{
+            "platform_type": naver_config.get("platform_type", "NaverBlog"),
             "blog_id": naver_config.get("blog_id", "boyinblue"),
             "rss_url": naver_config.get("rss_url"),
             "request_interval_seconds": naver_config.get("request_interval_seconds", 1.0),
@@ -194,6 +206,7 @@ def crawl_naver_blog(config: Dict, args):
     raw_dir = config.get("raw_directory")
 
     for info in blogs:
+        platform_type = info.get("platform_type", "NaverBlog")
         blog_id = info.get("blog_id")
         request_interval = info.get("request_interval_seconds", 1.0)
         rss_url = info.get("rss_url")
@@ -202,15 +215,10 @@ def crawl_naver_blog(config: Dict, args):
         print(f"[*] 요청 간격: {request_interval}초")
 
         crawler = NaverBlogCrawler(blog_id, rss_url=rss_url, request_interval=request_interval)
-        posts = crawler.crawl(
-            fetch_content=args.fetch_content,
-            max_posts=args.max_posts,
-            full=args.full,
-            follow_internal=args.follow_internal,
-        )
+        posts = crawler.crawl(max_posts=args.max_posts)
 
         if posts:
-            archive_posts(posts, archive_root, blog_id, summarize=args.summarize, raw_dir=raw_dir)
+            archive_posts(posts, archive_root, platform_type, blog_id, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
@@ -227,6 +235,7 @@ def crawl_tistory_blogs(config: Dict, args):
 
     for blog_info in blogs:
         blog_url = blog_info.get("blog_url")
+        platform_type = blog_info.get("platform_type", "Tistory")
         blog_name = blog_info.get("name", "unknown")
         request_interval = blog_info.get("request_interval_seconds", 1.0)
 
@@ -242,7 +251,7 @@ def crawl_tistory_blogs(config: Dict, args):
         if posts:
             archive_root = config.get("archive_root", "./archive")
             raw_dir = config.get("raw_directory")
-            archive_posts(posts, archive_root, blog_name, summarize=args.summarize, raw_dir=raw_dir)
+            archive_posts(posts, archive_root, platform_type, blog_name, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
@@ -259,6 +268,7 @@ def crawl_github_pages(config: Dict, args):
 
     for blog_info in blogs:
         blog_url = blog_info.get("blog_url")
+        platform_type = blog_info.get("platform_type", "GitHubPages")
         blog_name = blog_info.get("name", "unknown")
         request_interval = blog_info.get("request_interval_seconds", 1.0)
 
@@ -269,12 +279,12 @@ def crawl_github_pages(config: Dict, args):
         print(f"[*] 요청 간격: {request_interval}초")
 
         crawler = GitHubPagesCrawler(blog_url, request_interval=request_interval)
-        posts = crawler.crawl(fetch_content=args.fetch_content, max_posts=args.max_posts)
+        posts = crawler.crawl(max_posts=args.max_posts)
 
         if posts:
             archive_root = config.get("archive_root", "./archive")
             raw_dir = config.get("raw_directory")
-            archive_posts(posts, archive_root, blog_name, summarize=args.summarize, raw_dir=raw_dir)
+            archive_posts(posts, archive_root, platform_type, blog_name, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
@@ -291,25 +301,32 @@ def crawl_youtube(config: Dict, args):
 
     for channel_info in channels:
         channel_url = channel_info.get("channel_url")
+        platform_type = channel_info.get("platform_type", "YouTube")
+        channel_id = channel_info.get("channel_id")
         channel_name = channel_info.get("name", "unknown")
         request_interval = channel_info.get("request_interval_seconds", 1.0)
 
         if not channel_url:
             continue
 
-        print(f"\n[*] YouTube 채널 크롤링 시작 ({channel_name}: {channel_url})")
+        print(f"\n[*] YouTube 채널 크롤링 시작 ({channel_name}: {channel_url}, ID: {channel_id})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = YouTubeCrawler(channel_url=channel_url, request_interval=request_interval)
+        crawler = YouTubeCrawler(channel_url=channel_url, channel_id=channel_id, request_interval=request_interval)
         videos = crawler.crawl(max_videos=args.max_posts)
 
         if videos:
             archive_root = config.get("archive_root", "./archive")
             raw_dir = config.get("raw_directory")
-            archive_posts(videos, archive_root, channel_name, summarize=args.summarize, raw_dir=raw_dir)
+            archive_posts(videos, archive_root, platform_type, channel_name, raw_dir=raw_dir)
             all_videos.extend(videos)
 
     return all_videos
+
+
+def get_number_of_new_archived(posts: List[Dict]) -> int:
+    """새로 아카이브된 포스트 수를 계산합니다."""
+    return sum(1 for post in posts if post.get("new"))
 
 
 def test_telegram_config():
@@ -360,30 +377,10 @@ def main():
         help="아카이브에 저장하지 않고 메타데이터만 저장",
     )
     parser.add_argument(
-        "--fetch-content",
-        action="store_true",
-        help="포스트 본문도 함께 다운로드 (시간이 오래 걸림)",
-    )
-    parser.add_argument(
         "--max-posts",
         type=int,
         default=None,
         help="최대 크롤링 포스트 수 (테스트용)",
-    )
-    parser.add_argument(
-        "--summarize",
-        action="store_true",
-        help="Ollama를 사용해 각 포스트 요약 추가",
-    )
-    parser.add_argument(
-        "--full",
-        action="store_true",
-        help="RSS에 없는 이전 글까지 스크레이핑해 최대한 많이 수집",
-    )
-    parser.add_argument(
-        "--follow-internal",
-        action="store_true",
-        help="크롤된 포스트 내에 있는 같은 블로그의 다른 포스트 링크도 함께 따라갑니다.",
     )
     parser.add_argument(
         "--use-sitemap",
@@ -439,6 +436,10 @@ def main():
     # 크롤링 모드
     print("[*] 크롤링 시작...")
     all_posts: List[Dict] = []
+    youtube_videos: List[Dict] = []
+    tistory_posts: List[Dict] = []
+    naver_posts: List[Dict] = []
+    github_posts: List[Dict] = []
     
     # 에러 수집 시작
     error_collector = ErrorCollector()
@@ -446,6 +447,9 @@ def main():
     with error_collector:
         # 각 플랫폼별 크롤링
         if not args.no_archive:
+            youtube_videos = crawl_youtube(config, args)
+            all_posts.extend(youtube_videos)
+
             naver_posts = crawl_naver_blog(config, args)
             all_posts.extend(naver_posts)
 
@@ -455,11 +459,19 @@ def main():
             github_posts = crawl_github_pages(config, args)
             all_posts.extend(github_posts)
 
-            youtube_videos = crawl_youtube(config, args)
-            all_posts.extend(youtube_videos)
+    new_archived_count_youtube = get_number_of_new_archived(youtube_videos)
+    new_archived_count_naver = get_number_of_new_archived(naver_posts)
+    new_archived_count_tistory = get_number_of_new_archived(tistory_posts)
+    new_archived_count_github = get_number_of_new_archived(github_posts)
+    new_archived_total = new_archived_count_youtube + new_archived_count_naver + new_archived_count_tistory + new_archived_count_github
 
     print("\n" + "=" * 60)
-    print(f"[+] 모든 작업 완료! (총 {len(all_posts)}개 항목 수집)")
+    print(f"[+] 모든 작업 완료! (총 {len(all_posts)}개 발견 / {new_archived_total}개 추가)")
+    print(f"  - YouTube 영상: {len(youtube_videos)}개 발견 / {new_archived_count_youtube}개 추가")
+    print(f"  - 네이버 블로그 포스트: {len(naver_posts)}개 발견 / {new_archived_count_naver}개 추가")
+    print(f"  - 티스토리 블로그 포스트: {len(tistory_posts)}개 발견 / {new_archived_count_tistory}개 추가")
+    print(f"  - GitHub Pages 포스트: {len(github_posts)}개 발견 / {new_archived_count_github}개 추가")
+
     if error_collector.has_errors():
         print(f"[!] 에러 {len(error_collector.errors)}개 발생")
     print("=" * 60)

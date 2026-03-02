@@ -82,12 +82,6 @@ python main.py --schedule
 # 모든 플랫폼 크롤링
 python main.py
 
-# RSS의 한계를 넘어 이전 글까지 (네이버만)
-python main.py --full
-
-# 포스트 본문도 저장
-python main.py --fetch-content
-
 # 테스트 모드 (최대 10개)
 python main.py --max-posts 10
 ```
@@ -95,11 +89,7 @@ python main.py --max-posts 10
 ### 고급 옵션
 
 ```bash
---full                  # 리스트 페이지까지 크롤링
---follow-internal       # 포스트 내 링크도 추가 (네이버)
 --use-sitemap           # Sitemap 활용 (Tistory)
---fetch-content         # 본문도 함께 저장
---summarize             # Ollama로 요약
 --max-posts N           # 최대 N개까지만
 --test-telegram         # 텔레그램 설정 테스트
 --schedule              # 스케줄러 모드 (일일 다이제스트)
@@ -109,7 +99,7 @@ python main.py --max-posts 10
 
 ```bash
 # 전체 크롤 + 내부 링크 수집 (처음 한 번)
-python main.py --full --follow-internal --use-sitemap
+python main.py --use-sitemap
 
 # 빠른 일일 업데이트
 python main.py

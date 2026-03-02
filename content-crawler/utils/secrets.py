@@ -79,6 +79,6 @@ def get_telegram_chat_id() -> Optional[str]:
     return get_secret("TELEGRAM_CHAT_ID")
 
 
-def get_youtube_api_key() -> Optional[str]:
-    """YouTube API 키를 반환합니다."""
-    return get_secret("YOUTUBE_API_KEY")
+def get_google_api_key() -> Optional[str]:
+    """Google API 키를 반환합니다."""
+    return get_secret("GOOGLE_API_KEY")

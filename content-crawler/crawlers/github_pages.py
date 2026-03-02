@@ -98,36 +98,8 @@ class GitHubPagesCrawler:
         unique_posts = {p["link"]: p for p in posts}.values()
         return list(unique_posts)
 
-    def fetch_post_content(self, post_url: str) -> Optional[str]:
-        """포스트 본문을 가져옵니다."""
-        try:
-            print(f"[*] 포스트 본문 다운로드: {post_url}")
-            response = requests.get(post_url, headers=self.headers, timeout=10)
-            response.encoding = "utf-8"
-            response.raise_for_status()
-
-            # HTML 파싱 - 일반적인 블로그 콘텐츠 영역 찾기
-            soup = BeautifulSoup(response.text, "html.parser")
-            content_div = (
-                soup.find("article")
-                or soup.find("div", {"class": re.compile(r"content|post|main")})
-                or soup.find("main")
-            )
-
-            if not content_div:
-                print(f"[!] 본문 영역을 찾을 수 없습니다.")
-                return ""
-
-            text = content_div.get_text(separator="\n", strip=True)
-            return text
-
-        except Exception as e:
-            print(f"[ERROR] 본문 다운로드 실패 ({post_url}): {e}")
-            return ""
-
     def crawl(
         self,
-        fetch_content: bool = False,
         max_posts: int = None,
         index_url: Optional[str] = None,
     ) -> List[Dict]:
@@ -135,7 +107,6 @@ class GitHubPagesCrawler:
         정적 사이트를 크롤링합니다.
 
         Args:
-            fetch_content: 포스트 본문도 가져올지 여부
             max_posts: 최대 크롤링 포스트 수
             index_url: 블로그 인덱스 페이지 경로
 
@@ -147,22 +118,6 @@ class GitHubPagesCrawler:
         posts = self.crawl_index_page(index_url)
         if max_posts:
             posts = posts[:max_posts]
-
-        if fetch_content and posts:
-            print(f"\n[*] {len(posts)}개 포스트의 본문을 다운로드합니다...")
-            enriched_posts = []
-            for idx, post in enumerate(posts):
-                if post.get("link"):
-                    content = self.fetch_post_content(post["link"])
-                    post["content"] = content
-                    enriched_posts.append(post)
-
-                    if (idx + 1) % 10 == 0:
-                        print(f"[+] {idx + 1}/{len(posts)} 완료")
-
-                    time.sleep(self.request_interval)
-
-            posts = enriched_posts
 
         print(f"[+] 총 {len(posts)}개 포스트 크롤링 완료")
         return posts
