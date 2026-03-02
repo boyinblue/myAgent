@@ -37,28 +37,45 @@ def get_gdrive_service():
 def upload_files(local_directory, folder_id=None):
     service = get_gdrive_service()
 
+    print(f"")
+    print(f"📁 '{local_directory}' 디렉토리의 파일을 구글 드라이브에 업로드합니다...")
+
     for filename in os.listdir(local_directory):
         file_path = os.path.join(local_directory, filename)
         
         # 폴더 제외, 파일만 업로드
         if os.path.isfile(file_path):
+            print(f"")
+            print(f"  [*] 파일명 : {filename}")
+
+            # 1. 같은 이름의 파일이 있는지 검색
+            query = f"name = '{filename}' and '{folder_id}' in parents and trashed = false"
+            response = service.files().list(q=query, fields="files(id)").execute()
+            files = response.get('files', [])
+
             file_metadata = {'name': filename}
             if folder_id:
                 file_metadata['parents'] = [folder_id]
 
             media = MediaFileUpload(file_path, resumable=True)
-            
-            print(f"📤 업로드 중: {filename}...")
-            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            print(f"✅ 완료! File ID: {file.get('id')}")
 
+            if len(files) > 1:
+                for file in files:
+                    service.files().delete(fileId=file['id']).execute()
+                    print(f"  [!] 중복 파일 삭제: {filename} ({file['id']})")
 
+            file_metadata = {'name': filename, 'parents': [folder_id]}
+            file = service.files().create(body=file_metadata, media_body=media).execute()
+            print(f"  ✅ 완료! File ID: {file.get('id')}")
+        
+        else:
+            upload_files(file_path, folder_id)  # 하위 폴더 재귀적으로 처리
 
 if __name__ == '__main__':
     # 업로드할 로컬 경로 (예: C:/AI_Skills/)
-    LOCAL_DIR = './archive' 
+    LOCAL_DIR = '../archive' 
     # 구글 드라이브 내 특정 폴더에 넣고 싶다면 폴더 ID 입력 (선택사항)
-    TARGET_FOLDER_ID = None 
+    TARGET_FOLDER_ID = "1w0WOLRsWPhOME-JHtN09zUN7813akL5K"
 
     if not os.path.exists(LOCAL_DIR):
         os.makedirs(LOCAL_DIR)

@@ -8,16 +8,18 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import time
 import re
+import archive_manager
 
 
 class GitHubPagesCrawler:
     """GitHub Pages와 유사한 정적 사이트의 블로그 포스트를 크롤링합니다."""
 
-    def __init__(self, blog_url: str, request_interval: float = 1.0):
+    def __init__(self, blog_url: str, request_interval: float = 1.0, archive_mgr=None):
         """
         Args:
             blog_url: 블로그 기본 주소 (예: https://boyinblue.github.io)
             request_interval: 요청 간격 (초)
+            archive_mgr: 아카이브 관리자 인스턴스
         """
         self.blog_url = blog_url.rstrip("/")
         self.request_interval = request_interval

@@ -31,7 +31,6 @@ from scheduler import DailyDigestScheduler
 # 버전 정보 (아카이브 업데이트를 추적하기 위해)
 CRAWLER_VERSION = "2.2"
 
-
 def load_config(config_file="config.json"):
     """설정 파일을 로드합니다."""
     if not os.path.exists(config_file):
@@ -56,7 +55,7 @@ def save_metadata(posts, output_file):
     print(f"[+] 메타데이터 저장: {output_file} ({len(posts)}개)")
 
 
-def archive_posts(posts, archive_root="./archive", platform_type="", media_name="", raw_dir: str = None):
+def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: str = None):
     """포스트를 아카이브에 저장합니다.
 
     HTML이 제공된 포스트에서는 본문에서 이미지를 찾아 메타데이터(주소, 설명, 크기, SHA256)를 추출하고
@@ -64,7 +63,6 @@ def archive_posts(posts, archive_root="./archive", platform_type="", media_name=
 
     raw_dir가 지정되면 각 포스트의 원본 HTML/Raw 데이터를 해당 디렉토리에 저장합니다 (로컬 전용).
     """
-    archive_mgr = ArchiveManager(archive_root)
     extractor = EventDateExtractor()
     archived_count = 0
 
@@ -173,7 +171,7 @@ def archive_posts(posts, archive_root="./archive", platform_type="", media_name=
     archive_mgr.update_index(media_name, platform="mixed")
 
 
-def crawl_naver_blog(config: Dict, args):
+def crawl_naver_blog(config: Dict, args, archive_mgr=None):
     """네이버 블로그 크롤링
 
     config 플랫폼 섹션에서 blogs 리스트를 읽어 여러 블로그를 순회합니다.
@@ -202,8 +200,6 @@ def crawl_naver_blog(config: Dict, args):
             blogs.append({"blog_id": bid, "rss_url": None, "request_interval_seconds": 1.0})
 
     all_posts = []
-    archive_root = config.get("archive_root", "./archive")
-    raw_dir = config.get("raw_directory")
 
     for info in blogs:
         platform_type = info.get("platform_type", "NaverBlog")
@@ -218,13 +214,13 @@ def crawl_naver_blog(config: Dict, args):
         posts = crawler.crawl(max_posts=args.max_posts)
 
         if posts:
-            archive_posts(posts, archive_root, platform_type, blog_id, raw_dir=raw_dir)
+            archive_posts(posts, archive_mgr, platform_type, blog_id)
             all_posts.extend(posts)
 
     return all_posts
 
 
-def crawl_tistory_blogs(config: Dict, args):
+def crawl_tistory_blogs(config: Dict, args, archive_mgr=None):
     """티스토리 블로그 크롤링"""
     tistory_config = config.get("platforms", {}).get("tistory", {})
     if not tistory_config.get("enabled"):
@@ -246,18 +242,18 @@ def crawl_tistory_blogs(config: Dict, args):
         print(f"[*] 요청 간격: {request_interval}초")
 
         crawler = TistoryBlogCrawler(blog_url, request_interval=request_interval)
-        posts = crawler.crawl(max_posts=args.max_posts, use_sitemap=args.use_sitemap)
+        posts = crawler.crawl(max_posts=args.max_posts, archive_mgr=archive_mgr)
 
         if posts:
             archive_root = config.get("archive_root", "./archive")
             raw_dir = config.get("raw_directory")
-            archive_posts(posts, archive_root, platform_type, blog_name, raw_dir=raw_dir)
+            archive_posts(posts, archive_mgr, platform_type, blog_name, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
 
 
-def crawl_github_pages(config: Dict, args):
+def crawl_github_pages(config: Dict, args, archive_mgr=None):
     """GitHub Pages 크롤링"""
     gp_config = config.get("platforms", {}).get("github_pages", {})
     if not gp_config.get("enabled"):
@@ -278,19 +274,19 @@ def crawl_github_pages(config: Dict, args):
         print(f"\n[*] GitHub Pages 크롤링 시작 ({blog_name}: {blog_url})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = GitHubPagesCrawler(blog_url, request_interval=request_interval)
+        crawler = GitHubPagesCrawler(blog_url, request_interval=request_interval, archive_mgr=archive_mgr)
         posts = crawler.crawl(max_posts=args.max_posts)
 
         if posts:
             archive_root = config.get("archive_root", "./archive")
             raw_dir = config.get("raw_directory")
-            archive_posts(posts, archive_root, platform_type, blog_name, raw_dir=raw_dir)
+            archive_posts(posts, archive_mgr, platform_type, blog_name, raw_dir=raw_dir)
             all_posts.extend(posts)
 
     return all_posts
 
 
-def crawl_youtube(config: Dict, args):
+def crawl_youtube(config: Dict, args, archive_mgr=None):
     """YouTube 채널 크롤링"""
     yt_config = config.get("platforms", {}).get("youtube", {})
     if not yt_config.get("enabled"):
@@ -318,7 +314,7 @@ def crawl_youtube(config: Dict, args):
         if videos:
             archive_root = config.get("archive_root", "./archive")
             raw_dir = config.get("raw_directory")
-            archive_posts(videos, archive_root, platform_type, channel_name, raw_dir=raw_dir)
+            archive_posts(videos, archive_mgr, platform_type, channel_name, raw_dir=raw_dir)
             all_videos.extend(videos)
 
     return all_videos
@@ -424,6 +420,10 @@ def main():
     config = load_config("config.json")
     if not config:
         return
+    
+    archive_root = config.get("archive_root", "./archive")
+    raw_dir = config.get("raw_directory", ".raw")
+    archive_mgr = ArchiveManager(archive_root)  # 아카이브 매니저 인스턴스 생성
 
     # 스케줄러 모드
     if args.schedule:
@@ -447,16 +447,16 @@ def main():
     with error_collector:
         # 각 플랫폼별 크롤링
         if not args.no_archive:
-            youtube_videos = crawl_youtube(config, args)
+            youtube_videos = crawl_youtube(config, args, archive_mgr)
             all_posts.extend(youtube_videos)
 
-            naver_posts = crawl_naver_blog(config, args)
+            naver_posts = crawl_naver_blog(config, args, archive_mgr)
             all_posts.extend(naver_posts)
 
-            tistory_posts = crawl_tistory_blogs(config, args)
+            tistory_posts = crawl_tistory_blogs(config, args, archive_mgr)
             all_posts.extend(tistory_posts)
 
-            github_posts = crawl_github_pages(config, args)
+            github_posts = crawl_github_pages(config, args, archive_mgr)
             all_posts.extend(github_posts)
 
     new_archived_count_youtube = get_number_of_new_archived(youtube_videos)

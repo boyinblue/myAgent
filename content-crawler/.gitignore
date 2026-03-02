@@ -31,3 +31,7 @@ archive/
 # 개인 스크립트
 test_*.py
 dev_*.py
+
+# Credentials
+credentials.json
+token.pickle
