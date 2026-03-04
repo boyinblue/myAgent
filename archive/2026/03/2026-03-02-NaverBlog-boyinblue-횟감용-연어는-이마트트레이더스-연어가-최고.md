@@ -6,11 +6,11 @@ media_name: "boyinblue"
 created_at: "20180709"
 event_dates:
 category: ""
-tags:
+tags: "null"
 comments: ""
-keywords:
+keywords: "null"
 crawler_version: "2.2"
-images:
+images: "null"
 ---
 
 # 횟감용 연어는 이마트트레이더스 연어가 최고!

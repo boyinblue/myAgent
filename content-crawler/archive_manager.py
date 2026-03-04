@@ -7,36 +7,210 @@
 
 import os
 import json
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
-
+from urllib.parse import unquote
+import os  # os.path.basename 사용을 위해 os도 확인 필요
+import re
 
 class ArchiveManager:
     """콘텐츠 아카이브 관리자"""
 
-    def __init__(self, archive_root: str = "./archive"):
+    def __init__(self, archive_root: str = "./../archive", db_path: str = './../archive/archive_index.db'):
         """
         Args:
             archive_root: 아카이브 루트 디렉토리
+            db_path: 인덱스용 SQLite 데이터베이스 경로
         """
         self.archive_root = archive_root
         os.makedirs(archive_root, exist_ok=True)
-        # 캐시된 인덱스
-        self._index_data = None
 
-    def load_index(self):
-        """index.json 파일을 불러와 캐시하고 반환합니다."""
-        index_path = os.path.join(self.archive_root, "index.json")
-        if not os.path.exists(index_path):
-            return {"posts": []}
-        if self._index_data is None:
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    self._index_data = json.load(f)
-            except Exception:
-                self._index_data = {"posts": []}
-        return self._index_data
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+
+        # 결과를 dict처럼 사용 가능하게 함
+        self.conn.row_factory = sqlite3.Row
+
+        self.cur = self.conn.cursor()
+        self._create_table()
+
+    def _create_table(self):
+        # 중복 방지를 위해 link를 UNIQUE 키로 설정
+        self.cur.execute('''
+            CREATE TABLE IF NOT EXISTS achieves (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                url TEXT UNIQUE,                -- 중복 방지 핵심 키
+
+                platform TEXT,                 
+                media_name TEXT,
+                category TEXT,
+                keywords TEXT,
+                tags TEXT,                      -- JSON 문자열로 저장
+                images TEXT,
+                                                                                                    
+                gdrive_id TEXT,                 -- 구글 드라이브 파일 고유 ID
+                file_path TEXT,                 -- 로컬 저장 경로
+                file_hash TEXT,                 -- 로컬 파일 내용의 MD5 (수정 여부 판단용)
+                         
+                comment TEXT,
+                score INTEGER DEFAULT 0,        -- 페이지 점수
+                remind_count INTEGER DEFAULT 0, -- 리마인드 발행 횟수
+
+                crawler_version TEXT,
+                is_parsed BOOLEAN DEFAULT 0,    -- 파싱 완료 여부
+                archived BOOLEAN DEFAULT 0,     -- 최종 보관 완료 여부
+
+                created_at TEXT,                -- ISO8601 형식 저장 권장
+                event_dates TEXT,               -- JSON 문자열로 저장
+                db_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_sync_at DATETIME           -- 마지막 정합성 체크 시간
+            )
+        ''')
+
+        # 레코드 수정 시 db_updated_at을 자동으로 갱신하는 트리거 추가
+        self.cur.execute('''
+            CREATE TRIGGER IF NOT EXISTS update_achieve_timestamp
+            AFTER UPDATE ON achieves
+            BEGIN
+                UPDATE achieves SET db_updated_at = CURRENT_TIMESTAMP WHERE id = old.id;
+            END
+        ''')
+        self.conn.commit()
+
+    def upsert_by_url(self, url: str, title: str = "제목 없음", platform: str = "Unknown"):
+        """URL을 기준으로 DB에 데이터를 추가하거나 업데이트합니다."""
+        sql = '''
+            INSERT INTO achieves (url, title, platform, db_updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(url) DO UPDATE SET
+                title=excluded.title,
+                platform=excluded.platform,
+                db_updated_at=CURRENT_TIMESTAMP
+        '''
+        try:
+            self.cur.execute(sql, (url, title, platform))
+            self.conn.commit()
+            if self.cur.rowcount > 0:
+                print(f"✅ 성공: {url} 데이터가 반영되었습니다.")
+        except sqlite3.Error as e:
+            print(f"❌ DB 에러: {e}")
+
+    def import_json(self, json_path: str):
+        """기존 JSON 파일을 읽어 SQLite DB로 마이그레이션합니다."""
+        import json
+        
+        if not os.path.exists(json_path):
+            print(f"❌ 파일을 찾을 수 없습니다: {json_path}")
+            return
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            posts = data.get("posts", [])
+
+        print(f"[*] 총 {len(posts)}개의 데이터를 마이그레이션 시작합니다...")
+        
+        count = 0
+        for post in posts:
+            # JSON 키와 DB 컬럼 매핑 (필요한 것만 추출)
+            url = post.get("url")
+            if not url: continue
+            
+            title = post.get("title", "")
+            platform = post.get("platform") or post.get("platform_type", "Unknown")
+            media_name = post.get("media_name", "")
+            created_at = post.get("created_at", "")
+            file_path = post.get("file_path", "")
+            
+            # DB insert (ON CONFLICT 구문 덕분에 중복 걱정 없습니다)
+            sql = '''
+                INSERT INTO achieves (url, title, platform, media_name, created_at, file_path)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET
+                    title=excluded.title,
+                    platform=excluded.platform,
+                    media_name=excluded.media_name,
+                    file_path=excluded.file_path
+            '''
+            self.cur.execute(sql, (url, title, platform, media_name, created_at, file_path))
+            count += 1
+            
+        self.conn.commit()
+        print(f"✅ 마이그레이션 완료: {count}개의 레코드가 처리되었습니다.")
+
+    def update_post_metadata(self, post_id, **kwargs):
+        """특정 ID의 메타데이터를 직접 수정합니다."""
+        if not kwargs:
+            return
+        
+        # 1. 쿼리 생성: "title = ?, platform = ?" 형태
+        sets = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [post_id]
+        
+        # 2. 업데이트 실행 (트리거가 db_updated_at을 자동으로 갱신합니다)
+        sql = f"UPDATE achieves SET {sets} WHERE id = ?"
+        
+        try:
+            self.cur.execute(sql, values)
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"❌ 업데이트 중 DB 에러 발생 (ID {post_id}): {e}")
+
+    def get_incomplete_posts(self):
+        """title, media_name, platform 중 하나라도 누락된 레코드를 찾습니다."""
+        sql = '''
+            SELECT id, url, title, media_name, platform, file_path, created_at
+            FROM achieves 
+            WHERE (title IS NULL OR title = '') 
+               OR (media_name IS NULL OR media_name = '') 
+               OR (platform IS NULL OR platform = '')
+        '''
+
+        self.cur.execute(sql)
+        return self.cur.fetchall()
+
+    def lint_data(self):
+        """누락되거나 부실한 데이터를 리스트업합니다."""
+        incomplete = self.get_incomplete_posts()
+        if not incomplete:
+            print("✨ 모든 데이터가 완벽합니다!")
+            return
+        
+        print(f"🔍 총 {len(incomplete)}개의 부실 데이터 발견:")
+        for p in incomplete:
+            print(f"  [ID {p['id']}] {p['url']} (누락: {' '.join([k for k,v in dict(p).items() if not v])})")
+
+    def fix_data(self):
+        incomplete = self.get_incomplete_posts()
+        fixed_count = 0
+
+        # 패턴: 날짜(10자)-플랫폼-미디어명-제목.md
+        # 예: 2026-03-02-Tistory-frankler-제목.md
+        pattern = re.compile(r'(\d{4}-\d{2}-\d{2})-([^-]+)-([^-]+)-(.*)\.md')
+
+        for p in incomplete:
+            if not p['file_path']: continue
+
+            # 1. 파일명만 추출 및 URL 디코딩 (%EC%8B%9C... -> 한글)
+            filename = unquote(os.path.basename(p['file_path']))
+            match = pattern.search(filename)
+
+            if match:
+                c_date, platform, media, title = match.groups()
+
+                updates = {}
+                if not p['title'] or p['title'] == 'untitled': 
+                    updates['title'] = title.replace('-', ' ') # 하이픈을 공백으로
+                if not p['platform']: updates['platform'] = platform
+                if not p['media_name']: updates['media_name'] = media
+                if not p['created_at']: updates['created_at'] = c_date
+
+                if updates:
+                    self.update_post_metadata(p['id'], **updates)
+                    fixed_count += 1
+
+        print(f"🛠️ 자동 보정 완료: {fixed_count}개의 레코드를 '지능적'으로 수정했습니다.")
 
     def is_archived(self, url: str) -> bool:
         """
@@ -404,3 +578,38 @@ class ArchiveManager:
         except Exception as e:
             print(f"[!] Ollama 실행 실패: {e}")
         return None
+
+if __name__ == "__main__":
+    import argparse
+
+    # 인자 파서 설정
+    parser = argparse.ArgumentParser(description="Archive Manager CLI")
+    parser.add_argument("--url", type=str, help="추가할 콘텐츠의 URL")
+    parser.add_argument("--import_file", help="JSON 파일 마이그레이션 경로 (예: index.json)")
+    parser.add_argument("--check", action="store_true", help="누락 데이터 확인")
+    parser.add_argument("--fix", action="store_true", help="누락 데이터 수정")
+
+    args = parser.parse_args()
+
+    # 1. 매니저 초기화 (이때 DB 파일과 테이블이 생성됩니다)
+    # archive_root와 db_path는 필요에 따라 수정하세요.
+    manager = ArchiveManager(archive_root="../archive", db_path="../archive/archive_index.db")
+
+    if args.url:
+        print(f"[*] 데이터 추가 시도 중: {args.url}")
+        manager.upsert_by_url(args.url, args.title, args.platform)
+    elif args.import_file:
+        manager.import_json(args.import_file)
+    elif args.check:
+        manager.lint_data()
+    elif args.fix:
+        manager.fix_data()
+    else:
+        # 인자 없이 실행했을 때의 기본 동작 (상태 점검 등)
+        print("=== Archive Manager Status ===")
+        manager.cur.execute("SELECT COUNT(*) FROM achieves")
+        count = manager.cur.fetchone()[0]
+        print(f"현재 DB에 저장된 콘텐츠 수: {count}개")
+        print("사용법 예시: python archive_manager.py --url '주소' --title '제목'")
+    
+    print("===================================")

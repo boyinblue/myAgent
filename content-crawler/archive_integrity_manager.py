@@ -212,17 +212,38 @@ def inspect_md_file(file_path):
     # 파일명 포맷에 맞게 rename (YYYY-MM-DD-)
     rename_md_files(file_path)
 
+def inspect_index_json(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            index_data = yaml.safe_load(f)
+
+        for post in index_data.get('posts', []):
+            print(f"Raw Data: {post}")
+
+        # 3. 수정된 데이터로 파일 업데이트
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(index_data, f, allow_unicode=True, sort_keys=False)
+        print(f"[+] index.json 검사 및 수정 완료")
+
+    except Exception as e:
+        print(f"[ERROR] index.json 처리 중 오류: {e}")
+
 if __name__ == "__main__":
-    # 1. 현재 스크립트의 절대 경로
+    # 현재 스크립트의 절대 경로
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 2. 상위 디렉토리(..)의 archive 폴더 경로 생성
+    # 상위 디렉토리(..)의 archive 폴더 경로 생성
     # normpath를 써주면 'crawlers\..\archive' 같은 경로를 'C:\...\archive'로 깔끔하게 정리해줍니다.
     archive_dir = os.path.normpath(os.path.join(current_dir, "..", "archive"))
 
+    # MD 파일 검사 및 수정
     print(f"[*] 탐색 시작 경로: {archive_dir}")
     for root, dirs, files in os.walk(archive_dir):
         for filename in files:
             if not filename.endswith(".md"):
                 continue
             inspect_md_file(os.path.join(root, filename))
+
+    # index.json 파일 검사 및 수정
+    index_json_path = os.path.join(archive_dir, "index.json")
+    inspect_index_json(index_json_path)

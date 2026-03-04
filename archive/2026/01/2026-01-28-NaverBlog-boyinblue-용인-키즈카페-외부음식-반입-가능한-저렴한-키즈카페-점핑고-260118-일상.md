@@ -1,21 +1,18 @@
 ---
-title: 용인 키즈카페 - 외부음식 반입 가능한 저렴한 키즈카페 점핑고 (260118 일상)
-url: https://blog.naver.com/boyinblue/224162172204
-created_at: '2026-01-28T02:17:54+09:00'
-event_dates: null
-category: ''
-tags: null
-comments: '안녕하슈? 프랑클러임돠~ 2026년 1월 18일 일상 기록과 함께 용인 키즈카페 이야기를 기록하고자 합니다. 2026년 1월 18일
-  일상 장모님댁 정리 장년에 장모님께서 돌아가신 후에 장모님댁을 한 번 정리했었어요. 그때 완전히 정리하지 못한 가구들이랑 일부 가전들을 완전히
-  정리하기 위해서 처형네랑 같이 모였어요. 당근에 전자렌지를 천원에 처분한다고 글을 올렸더니 순식간에 세 분께서 연락을 주셨더라고요. 1등으로 채팅을
-  남겨주신 분께 전자렌지를 천원에 양도했습니다. 무거워서 옮기지 못했던 TV장과 서랍장도 내놨어요. 저는 하나도 안했고, 형님이랑 조카랑 둘이서
-  다 옮겼어요. 스티커는 11,000원치 붙였어요. 형님이 카드로 계산....... '
-keywords: null
-crawler_version: '2.2'
-images: null
-platform_type: NaverBlog
-media_name: boyinblue
+title: "용인 키즈카페 - 외부음식 반입 가능한 저렴한 키즈카페 점핑고 (260118 일상)"
+url: "https://blog.naver.com/boyinblue/224162172204"
+platform: "NaverBlog"
+media_name: "boyinblue"
+created_at: "2026-01-28T02:17:54+09:00"
+event_dates:
+category: ""
+tags: "null"
+comments: "안녕하슈? 프랑클러임돠~ 2026년 1월 18일 일상 기록과 함께 용인 키즈카페 이야기를 기록하고자 합니다. 2026년 1월 18일"
+keywords: "null"
+crawler_version: "2.2"
+images: "null"
 ---
+
 # 용인 키즈카페 - 외부음식 반입 가능한 저렴한 키즈카페 점핑고 (260118 일상)
 
 (본문 없음)

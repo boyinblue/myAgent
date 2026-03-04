@@ -6,11 +6,11 @@ media_name: "boyinblue"
 created_at: "20171129"
 event_dates:
 category: ""
-tags:
+tags: "null"
 comments: ""
-keywords:
+keywords: "null"
 crawler_version: "2.2"
-images:
+images: "null"
 ---
 
 # [블로그] 저도 네이버 검색배제 경험했습니다. 검색누락... 

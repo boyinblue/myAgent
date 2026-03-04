@@ -6,11 +6,11 @@ media_name: "boyinblue"
 created_at: "20170616"
 event_dates:
 category: ""
-tags:
+tags: "null"
 comments: ""
-keywords:
+keywords: "null"
 crawler_version: "2.2"
-images:
+images: "null"
 ---
 
 # [온누리상품권] #1. 전자상품권 사용처
