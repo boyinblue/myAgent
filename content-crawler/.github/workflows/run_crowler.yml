@@ -1,0 +1,41 @@
+name: Manual Content Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '추가할 콘텐츠 URL'
+        required: true
+        default: ''
+      title:
+        description: '콘텐츠 제목 (선택)'
+        required: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Archive Manager
+        run: |
+          # 아까 만든 main 함수를 호출합니다.
+          python archive_manager.py --url "${{ github.event.inputs.url }}" --title "${{ github.event.inputs.title }}"
+
+      - name: Commit and Push DB changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add archive_index.db
+          git commit -m "chore: update archive index DB [skip ci]" || echo "No changes to commit"
+          git push
