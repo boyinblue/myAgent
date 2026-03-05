@@ -37,7 +37,7 @@ def generate_commit_message(diff):
     prompt = f"""
     당신은 전문 소프트웨어 엔지니어입니다. 아래의 git diff 내용을 보고 요약된 커밋 메시지를 작성하세요.
     반드시 'type: description' 형식(예: feat: add youtube api integration)으로 작성하고, 영어로 대답하세요.
-    다른 설명 없이 메시지만 딱 한 줄 출력하세요.
+    문서 파일 보다는 소스코드나 스크립트 변경점 위주로 다른 설명 없이 메시지만 딱 한 줄 출력하세요.
 
     DIFF CONTENT:
     {diff[:3000]}
