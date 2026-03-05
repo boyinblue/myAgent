@@ -7,7 +7,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.http import MediaFileUpload
 
 # .env 파일 로드
-load_dotenv()
+load_dotenv(os.path.join('..', '.env'))
 
 # 환경 변수에서 설정값 가져오기
 GOOGLE_KEY = os.getenv("GOOGLE_API_KEY")
