@@ -164,13 +164,28 @@ class ArchiveManager:
         return False
 
     def get_post_id_by_url(self, url: str):
-        """URL로 post_id를 찾습니다."""
+        """URL로 post_id를 찾습니다. 블로그/모바일 양쪽 형태 시도."""
         sql = "SELECT id FROM achieves WHERE url = ? LIMIT 1"
         try:
+            # 1. 정확한 URL로 먼저 시도
             self.cur.execute(sql, (url,))
             record = self.cur.fetchone()
             if record:
                 return record[0]
+            
+            # 2. 네이버 블로그인 경우 모바일/일반 형태 양쪽 시도
+            if "blog.naver.com" in url:
+                if "m.blog.naver.com" in url:
+                    # 모바일 형태 → 일반 형태로 변환
+                    alt_url = url.replace("m.blog.naver.com", "blog.naver.com")
+                else:
+                    # 일반 형태 → 모바일 형태로 변환
+                    alt_url = url.replace("blog.naver.com", "m.blog.naver.com")
+                
+                self.cur.execute(sql, (alt_url,))
+                record = self.cur.fetchone()
+                if record:
+                    return record[0]
         except sqlite3.Error as e:
             print(f"❌ DB 조회 에러: {e}")
         return None
