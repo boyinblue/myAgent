@@ -19,9 +19,12 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# 임시 파일들
+temp/
+*.tmp
+
 # 프로젝트 관련
 *.log
-.env
 .env.local
 
 # 저장소 (테스트 데이터)

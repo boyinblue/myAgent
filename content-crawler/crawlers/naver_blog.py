@@ -13,7 +13,6 @@ import json
 from typing import Dict, Optional, List
 from datetime import datetime
 import time
-import archive_manager
 
 
 class NaverBlogCrawler:
@@ -38,6 +37,27 @@ class NaverBlogCrawler:
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
+
+    def save_page_to_file(self, url, content):
+        """다운로드 받은 페이지를 파일로 저장합니다."""
+        import hashlib
+        import os
+
+        # temp 폴더 생성
+        temp_dir = "./temp"
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # URL을 기반으로 파일명 생성 (해시 사용)
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        filename = f"{url_hash}.html"
+        filepath = os.path.join(temp_dir, filename)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        print(f"[+] 페이지 저장됨: {filepath}")
+        return filepath
+
 
     def fetch_rss(self) -> Optional[feedparser.FeedParserDict]:
         """RSS 피드를 가져옵니다."""
@@ -82,7 +102,82 @@ class NaverBlogCrawler:
                 time.sleep(self.request_interval)
 
         return posts
-    
+
+    def parse_url(self, url):
+        """단일 URL을 파싱하여 포스트 정보를 리턴합니다."""
+        print(f"[*] {url}에서 포스트 정보 추출 중...")
+
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp.raise_for_status()
+
+            # 페이지를 파일로 저장
+            saved_filepath = self.save_page_to_file(url, resp.text)
+
+            # 저장된 파일에서 파싱
+            with open(saved_filepath, "r", encoding="utf-8") as f:
+                html_content = f.read()
+
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+
+            # title 추출
+            title = soup.title.string if soup.title else "제목 없음"
+            print(f"제목: {title}")
+
+            # 모든 URL 링크 추출
+            links = []
+            for a_tag in soup.find_all('a', href=True):
+                href = a_tag['href']
+                link_text = a_tag.get_text(strip=True)
+                links.append({"url": href, "text": link_text})
+
+            print(f"찾은 링크 수: {len(links)}")
+            for i, link in enumerate(links[:10]):  # 처음 10개만 출력
+                print(f"  {i+1}. {link['text']} -> {link['url']}")
+
+            post = {
+                "title": title,
+                "link": url,
+                "links": links,  # 추출된 링크들 추가
+            }
+
+            self.archive_mgr.update_post(url, title=title, platform="Naver Blog", media_name=self.blog_id)
+
+            return post
+
+        except Exception as e:
+            print(f"[!] {url}에 접근할 수 없습니다: {e}")
+
+        return None
+
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp.raise_for_status()
+
+            
+
+            # 테그에서 title 추출
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            title = soup.title.string if soup.title else "제목 없음"
+
+            print(f"제목: {title}")
+
+            post = {
+                "title": title,
+                "link": url,
+            }
+
+            self.archive_mgr.update_post(url, title=title, platform="Naver Blog", media_name=self.blog_id)
+
+            return post
+
+        except Exception as e:
+            print(f"[!] {url}에 접근할 수 없습니다: {e}")
+
+        return None
+
     def get_naver_blog_list(self, client_id, client_secret, blog_id):
         results = []
         display = 100  # 한 번에 가져올 개수 (최대 100)
