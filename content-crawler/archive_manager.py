@@ -139,6 +139,42 @@ class ArchiveManager:
         self.conn.commit()
         print(f"✅ 마이그레이션 완료: {count}개의 레코드가 처리되었습니다.")
 
+    # URL을 기준으로 title, media_name, platform이 모두 존재하는지 확인하여 아카이브 여부 판단
+    def is_archived(self, url: str) -> bool:
+        """
+        URL이 이미 아카이브되었는지 확인합니다.
+        
+        Args:
+            url: 확인할 URL
+            
+        Returns:
+            True if URL is already archived, False otherwise
+        """
+        sql = "SELECT title, platform, media_name FROM achieves WHERE url = ? LIMIT 1"
+        self.cur.execute(sql, (url,))
+
+        # 레코드의 title, platform, media_name이 모두 존재하는 확인
+        if self.cur.rowcount == 0:
+            return False
+
+        record = dict(self.cur.fetchone())
+        if record.get('title') and record.get('platform') and record.get('media_name'):
+            return True
+
+        return False
+
+    def get_post_id_by_url(self, url: str):
+        """URL로 post_id를 찾습니다."""
+        sql = "SELECT id FROM achieves WHERE url = ? LIMIT 1"
+        try:
+            self.cur.execute(sql, (url,))
+            record = self.cur.fetchone()
+            if record:
+                return record[0]
+        except sqlite3.Error as e:
+            print(f"❌ DB 조회 에러: {e}")
+        return None
+
     def update_post_metadata(self, post_id, **kwargs):
         """특정 ID의 메타데이터를 직접 수정합니다."""
         if not kwargs:
@@ -211,24 +247,6 @@ class ArchiveManager:
                     fixed_count += 1
 
         print(f"🛠️ 자동 보정 완료: {fixed_count}개의 레코드를 '지능적'으로 수정했습니다.")
-
-    def is_archived(self, url: str) -> bool:
-        """
-        URL이 이미 아카이브되었는지 확인합니다.
-        
-        Args:
-            url: 확인할 URL
-            
-        Returns:
-            True if URL is already archived, False otherwise
-        """
-        index_data = self.load_index()
-        posts = index_data.get("posts", [])
-        
-        for post in posts:
-            if post.get("url") == url or post.get("link") == url:
-                return True
-        return False
 
     def get_archive_path(self, year: int, month: int) -> str:
         """아카이브 디렉토리 경로를 반환합니다."""

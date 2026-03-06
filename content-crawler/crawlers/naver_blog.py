@@ -13,6 +13,7 @@ import json
 from typing import Dict, Optional, List
 from datetime import datetime
 import time
+from urllib.parse import urlparse, parse_qs
 
 
 class NaverBlogCrawler:
@@ -108,11 +109,27 @@ class NaverBlogCrawler:
         print(f"[*] {url}에서 포스트 정보 추출 중...")
 
         try:
-            resp = requests.get(url, headers=self.headers, timeout=10)
+            normalized_url = url
+
+            # 네이버 블로그는 모바일 도메인에서 og:title이 더 안정적으로 제공됨
+            if "blog.naver.com/PostView.naver" in normalized_url:
+                parsed = urlparse(normalized_url)
+                params = parse_qs(parsed.query)
+                blog_id = (params.get("blogId") or [""])[0]
+                log_no = (params.get("logNo") or [""])[0]
+                if blog_id and log_no:
+                    normalized_url = f"https://m.blog.naver.com/{blog_id}/{log_no}"
+            elif "blog.naver.com" in normalized_url and "m.blog.naver.com" not in normalized_url:
+                normalized_url = normalized_url.replace("//blog.naver.com", "//m.blog.naver.com")
+
+            if normalized_url != url:
+                print(f"[*] 모바일 URL로 변환: {normalized_url}")
+
+            resp = requests.get(normalized_url, headers=self.headers, timeout=10)
             resp.raise_for_status()
 
             # 페이지를 파일로 저장
-            saved_filepath = self.save_page_to_file(url, resp.text)
+            saved_filepath = self.save_page_to_file(normalized_url, resp.text)
 
             # 저장된 파일에서 파싱
             with open(saved_filepath, "r", encoding="utf-8") as f:
@@ -121,16 +138,27 @@ class NaverBlogCrawler:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(html_content, 'html.parser')
 
-            # title 추출
-            title = soup.title.string if soup.title else "제목 없음"
+            # title 추출: og:title 우선
+            og_title = soup.find("meta", attrs={"property": "og:title"})
+            if og_title and og_title.get("content"):
+                title = og_title.get("content").strip()
+            else:
+                title = soup.title.string.strip() if soup.title and soup.title.string else "제목 없음"
             print(f"제목: {title}")
 
             # 모든 URL 링크 추출
             links = []
             for a_tag in soup.find_all('a', href=True):
-                href = a_tag['href']
+                href = a_tag['href'].strip()
                 link_text = a_tag.get_text(strip=True)
+                if not href:
+                    continue
                 links.append({"url": href, "text": link_text})
+
+            # og:url도 있으면 함께 기록
+            og_url = soup.find("meta", attrs={"property": "og:url"})
+            if og_url and og_url.get("content"):
+                links.insert(0, {"url": og_url.get("content").strip(), "text": "og:url"})
 
             print(f"찾은 링크 수: {len(links)}")
             for i, link in enumerate(links[:10]):  # 처음 10개만 출력
@@ -139,37 +167,22 @@ class NaverBlogCrawler:
             post = {
                 "title": title,
                 "link": url,
+                "resolved_url": normalized_url,
                 "links": links,  # 추출된 링크들 추가
+                "saved_file": saved_filepath,
             }
 
-            self.archive_mgr.update_post(url, title=title, platform="Naver Blog", media_name=self.blog_id)
-
-            return post
-
-        except Exception as e:
-            print(f"[!] {url}에 접근할 수 없습니다: {e}")
-
-        return None
-
-        try:
-            resp = requests.get(url, headers=self.headers, timeout=10)
-            resp.raise_for_status()
-
-            
-
-            # 테그에서 title 추출
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            title = soup.title.string if soup.title else "제목 없음"
-
-            print(f"제목: {title}")
-
-            post = {
-                "title": title,
-                "link": url,
-            }
-
-            self.archive_mgr.update_post(url, title=title, platform="Naver Blog", media_name=self.blog_id)
+            # archive_mgr이 있으면 URL로 찾은 포스트의 title을 업데이트
+            if self.archive_mgr is not None:
+                try:
+                    post_id = self.archive_mgr.get_post_id_by_url(url)
+                    if post_id:
+                        self.archive_mgr.update_post_metadata(post_id, title=title)
+                        print(f"[+] 아카이브 업데이트(제목): ID={post_id}, title={title}")
+                    else:
+                        print(f"[i] URL에 해당하는 포스트가 아카이브에 없습니다: {url}")
+                except Exception as e:
+                    print(f"[!] 아카이브 업데이트 실패: {e}")
 
             return post
 
