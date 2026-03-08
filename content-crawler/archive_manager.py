@@ -86,7 +86,7 @@ class ArchiveManager:
         URL을 정규화합니다 (중복 체크용).
         
         - m.blog.naver.com → blog.naver.com
-        - 쿼리 파라미터 제거 (?fromRss=true 등)
+        - 쿼리 파라미터 제거 (단, YouTube는 제외)
         - 마지막 슬래시 제거
         
         Args:
@@ -101,9 +101,21 @@ class ArchiveManager:
         # 모바일 URL → 데스크톱 URL
         url = url.replace("://m.blog.naver.com", "://blog.naver.com")
         
-        # 쿼리 파라미터 제거
+        # 쿼리 파라미터 제거 (단, YouTube는 v= 파라미터 유지)
         if "?" in url:
-            url = url.split("?")[0]
+            if "youtube.com" in url or "youtu.be" in url:
+                # YouTube의 경우 v= 파라미터만 유지
+                if "?v=" in url:
+                    # ?v=VIDEO_ID만 추출, 나머지는 제거
+                    base_url = url.split("?")[0]
+                    params = url.split("?")[1]
+                    for param in params.split("&"):
+                        if param.startswith("v="):
+                            url = f"{base_url}?{param}"
+                            break
+            else:
+                # 네이버 블로그 등은 쿼리 파라미터 전체 제거
+                url = url.split("?")[0]
         
         # 마지막 슬래시 제거
         if url.endswith("/"):
