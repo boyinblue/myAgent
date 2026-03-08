@@ -7,6 +7,7 @@ __pycache__/
 # Runtime process files
 *.pid
 .dashboard.pid
+.access_tokens.json
 
 # SQLite databases
 *.db-journal

@@ -22,10 +22,13 @@ load_environment()
 
 # ngrok_manager의 토큰 관리 함수 import
 import ngrok_manager
+import json
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
 
+# 토큰 저장 파일
+_TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
 
 def is_local_mode() -> bool:
     return (os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() == '1')
@@ -35,24 +38,43 @@ def is_authenticated() -> bool:
     return is_local_mode() or bool(session.get('authenticated'))
 
 def validate_token(token):
-    """토큰 유효성 검증"""
-    if token not in ngrok_manager.active_tokens:
+    """토큰 유효성 검증 (파일 기반)"""
+    try:
+        # 파일에서 토큰 읽기
+        if not _TOKENS_FILE.exists():
+            return False
+        
+        with open(_TOKENS_FILE, 'r') as f:
+            all_tokens = json.load(f)
+        
+        if token not in all_tokens:
+            return False
+        
+        token_info = all_tokens[token]
+        
+        # 만료 확인
+        expires_at = datetime.fromisoformat(token_info['expires_at'])
+        if datetime.now() > expires_at:
+            # 만료된 토큰 제거
+            del all_tokens[token]
+            with open(_TOKENS_FILE, 'w') as f:
+                json.dump(all_tokens, f)
+            return False
+        
+        # 사용 여부 확인 (일회용)
+        if token_info['used']:
+            return False
+        
+        # 토큰 사용 처리
+        token_info['used'] = True
+        all_tokens[token] = token_info
+        with open(_TOKENS_FILE, 'w') as f:
+            json.dump(all_tokens, f)
+        
+        return True
+    except Exception as e:
+        print(f"[!] 토큰 검증 실패: {e}")
         return False
-    
-    token_info = ngrok_manager.active_tokens[token]
-    
-    # 만료 확인
-    if datetime.now() > token_info['expires_at']:
-        del ngrok_manager.active_tokens[token]
-        return False
-    
-    # 사용 여부 확인 (일회용)
-    if token_info['used']:
-        return False
-    
-    # 토큰 사용 처리
-    token_info['used'] = True
-    return True
 
 def get_db_connection():
     """아카이브 DB 연결"""

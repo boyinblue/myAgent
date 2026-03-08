@@ -7,6 +7,7 @@ import time
 import subprocess
 import requests
 import secrets
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 import shutil
@@ -22,7 +23,10 @@ if str(content_crawler) not in sys.path:
 
 from utils.telegram_notifier import TelegramNotifier
 
-# 일회용 토큰 저장소 (메모리, ngrok_manager와 app.py가 공유)
+# 토큰 저장 파일 (프로세스 간 공유용)
+_TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
+
+# 일회용 토큰 저장소
 active_tokens = {}
 
 def find_ngrok_exe():
@@ -47,14 +51,31 @@ def find_ngrok_exe():
     return None
 
 def generate_access_token(expires_minutes=120):
-    """일회용 접속 토큰 생성"""
+    """일회용 접속 토큰 생성 및 파일 저장"""
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now() + timedelta(minutes=expires_minutes)
-    active_tokens[token] = {
-        'created_at': datetime.now(),
-        'expires_at': expires_at,
+    
+    token_data = {
+        'created_at': datetime.now().isoformat(),
+        'expires_at': expires_at.isoformat(),
         'used': False
     }
+    
+    # 메모리에 저장
+    active_tokens[token] = token_data
+    
+    # 파일에 저장 (프로세스 간 공유용)
+    try:
+        all_tokens = {}
+        if _TOKENS_FILE.exists():
+            with open(_TOKENS_FILE, 'r') as f:
+                all_tokens = json.load(f)
+        all_tokens[token] = token_data
+        with open(_TOKENS_FILE, 'w') as f:
+            json.dump(all_tokens, f)
+    except Exception as e:
+        print(f"[!] 토큰 파일 저장 실패: {e}")
+    
     return token
 
 class NgrokManager:
