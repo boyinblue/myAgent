@@ -225,23 +225,37 @@ class NaverBlogCrawler:
                 title = soup.title.string.strip() if soup.title and soup.title.string else "제목 없음"
             print(f"제목: {title}")
 
-            # 모든 URL 링크 추출
+            # 내부 포스트 링크만 추출 (크롤링 가능한 링크)
             links = []
             for a_tag in soup.find_all('a', href=True):
                 href = a_tag['href'].strip()
                 link_text = a_tag.get_text(strip=True)
                 if not href:
                     continue
-                links.append({"url": href, "text": link_text})
+                
+                # 절대 URL로 변환
+                absolute_url = urljoin(url, href)
+                
+                # 정규화 시도
+                normalized = self._normalize_naver_post_url(absolute_url)
+                
+                # 내부 블로그 포스트 링크만 추가
+                if normalized and self._is_internal_blog_url(normalized):
+                    links.append({"url": normalized, "text": link_text})
 
-            # og:url도 있으면 함께 기록
-            og_url = soup.find("meta", attrs={"property": "og:url"})
-            if og_url and og_url.get("content"):
-                links.insert(0, {"url": og_url.get("content").strip(), "text": "og:url"})
+            # 중복 제거
+            seen_urls = set()
+            unique_links = []
+            for link in links:
+                if link['url'] not in seen_urls:
+                    seen_urls.add(link['url'])
+                    unique_links.append(link)
+            links = unique_links
 
-            print(f"찾은 링크 수: {len(links)}")
-            for i, link in enumerate(links[:10]):  # 처음 10개만 출력
-                print(f"  {i+1}. {link['text']} -> {link['url']}")
+            if links:
+                print(f"[*] 내부 포스트 링크 발견: {len(links)}개")
+                for i, link in enumerate(links[:5]):  # 처음 5개만 출력
+                    print(f"  {i+1}. {link['url']}")
 
             post = {
                 "title": title,
@@ -316,14 +330,11 @@ class NaverBlogCrawler:
                 discovered.append(post)
 
                 if depth < max_depth:
+                    # parse_url()에서 이미 정규화되고 필터링된 링크를 받음
                     for link in post.get("links", []):
-                        href = (link.get("url") or "").strip()
-                        if not href:
-                            continue
-                        absolute = urljoin(current_url, href)
-                        normalized = self._normalize_naver_post_url(absolute)
-                        if self._is_internal_blog_url(normalized) and normalized not in visited:
-                            queue.append((normalized, depth + 1))
+                        normalized_url = link.get("url")
+                        if normalized_url and normalized_url not in visited:
+                            queue.append((normalized_url, depth + 1))
 
         return discovered
 
