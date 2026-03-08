@@ -9,6 +9,7 @@ import requests
 import secrets
 from pathlib import Path
 from datetime import datetime, timedelta
+import shutil
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -17,6 +18,27 @@ from utils.telegram_notifier import TelegramNotifier
 
 # 일회용 토큰 저장소 (메모리, ngrok_manager와 app.py가 공유)
 active_tokens = {}
+
+def find_ngrok_exe():
+    """ngrok 실행 파일 경로 찾기"""
+    # 1. shutil.which로 PATH에서 찾기
+    ngrok_path = shutil.which('ngrok')
+    if ngrok_path:
+        return ngrok_path
+    
+    # 2. 설치된 경로들에서 찾기 (Windows)
+    possible_paths = [
+        Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs' / 'ngrok' / 'ngrok.exe',
+        Path(os.environ.get('ProgramFiles', 'C:\\Program Files')) / 'ngrok' / 'ngrok.exe',
+        Path('C:\\Program Files (x86)') / 'ngrok' / 'ngrok.exe',
+        Path(os.environ.get('USERPROFILE', '')) / 'ngrok' / 'ngrok.exe',
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            return str(path)
+    
+    return None
 
 def generate_access_token(expires_minutes=120):
     """일회용 접속 토큰 생성"""
@@ -41,16 +63,24 @@ class NgrokManager:
         """ngrok 터널 시작"""
         print(f"[*] ngrok 터널 시작 (포트: {port})...")
         
+        # ngrok 실행 파일 찾기
+        ngrok_exe = find_ngrok_exe()
+        if not ngrok_exe:
+            print("[!] ngrok을 찾을 수 없습니다.")
+            print("[!] 설치해주세요: https://ngrok.com/download")
+            return None
+        
+        print(f"[*] ngrok 경로: {ngrok_exe}")
+        
         # ngrok 프로세스 시작
         try:
             self.process = subprocess.Popen(
-                ['ngrok', 'http', str(port)],
+                [ngrok_exe, 'http', str(port)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-        except FileNotFoundError:
-            print("[!] ngrok이 설치되어 있지 않습니다.")
-            print("[!] 설치: https://ngrok.com/download")
+        except Exception as e:
+            print(f"[!] ngrok 실행 실패: {e}")
             return None
         
         # ngrok API가 준비될 때까지 대기
