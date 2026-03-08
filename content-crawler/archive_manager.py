@@ -201,11 +201,12 @@ class ArchiveManager:
         sql = "SELECT title, platform, media_name FROM posts WHERE url = ? LIMIT 1"
         self.cur.execute(sql, (url,))
 
-        # 레코드의 title, platform, media_name이 모두 존재하는 확인
-        if self.cur.rowcount == 0:
+        # sqlite3 SELECT의 rowcount는 신뢰할 수 없으므로 fetchone()으로 존재 여부 판단
+        row = self.cur.fetchone()
+        if row is None:
             return False
 
-        record = dict(self.cur.fetchone())
+        record = dict(row)
         if record.get('title') and record.get('platform') and record.get('media_name'):
             return True
 
@@ -369,6 +370,17 @@ class ArchiveManager:
 
         return date_obj.year, date_obj.month, date_obj.day
 
+    @staticmethod
+    def _ensure_list(value):
+        """입력값을 안전한 리스트로 정규화합니다."""
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, tuple) or isinstance(value, set):
+            return list(value)
+        return [value]
+
     def create_markdown_file(
         self,
         title: str,
@@ -419,19 +431,24 @@ class ArchiveManager:
         url = self._normalize_url(url)
 
         # Frontmatter 생성 / 기존 파일이 있으면 병합
+        safe_event_dates = self._ensure_list(event_dates)
+        safe_tags = self._ensure_list(tags)
+        safe_keywords = self._ensure_list(keywords)
+        safe_images = [img for img in self._ensure_list(images) if img is not None]
+
         frontmatter = {
             "title": title,
             "url": url,
             "platform": platform_type,
             "media_name": media_name,
             "created_at": created_at,
-            "event_dates": event_dates,
+            "event_dates": safe_event_dates,
             "category": category,
-            "tags": tags or [],
+            "tags": safe_tags,
             "comments": comments or "",
-            "keywords": keywords or [],
+            "keywords": safe_keywords,
             "crawler_version": crawler_version,
-            "images": images or [],
+            "images": safe_images,
         }
 
         # 기존 파일이 존재하면 frontmatter 병합 (버전 비교 등)
@@ -447,13 +464,15 @@ class ArchiveManager:
                             seen = set()
                             combined = []
                             for img in existing[key] + frontmatter.get(key, []):
-                                url = img.get("url")
-                                if url and url not in seen:
-                                    seen.add(url)
+                                if not isinstance(img, dict):
+                                    continue
+                                image_url = img.get("url")
+                                if image_url and image_url not in seen:
+                                    seen.add(image_url)
                                     combined.append(img)
                             frontmatter[key] = combined
                         else:
-                            combined = existing[key] + frontmatter.get(key, [])
+                            combined = [item for item in (existing[key] + frontmatter.get(key, [])) if item is not None]
                             frontmatter[key] = list(dict.fromkeys(combined))
                     elif isinstance(existing[key], str):
                         frontmatter[key] = frontmatter.get(key) or existing[key]
@@ -517,6 +536,8 @@ class ArchiveManager:
             if isinstance(value, list):
                 lines.append(f"{key}:")
                 for item in value:
+                    if item is None:
+                        continue
                     # handle dictionary items (e.g. image metadata)
                     if isinstance(item, dict):
                         lines.append(f"  -")
@@ -531,7 +552,7 @@ class ArchiveManager:
         lines.append("")
         lines.append(f"# {frontmatter['title']}")
         lines.append("")
-        lines.append(content)
+        lines.append(content or "")
 
         return "\n".join(lines)
 

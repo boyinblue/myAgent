@@ -16,7 +16,7 @@ from datetime import datetime
 import time
 import random
 from collections import deque
-from urllib.parse import urlparse, parse_qs, urljoin
+from urllib.parse import urlparse, parse_qs, urljoin, urlunparse
 from urllib import robotparser
 
 try:
@@ -70,6 +70,19 @@ class NaverBlogCrawler:
             return ""
         normalized_url = url.strip()
 
+        try:
+            parsed = urlparse(normalized_url)
+            normalized_url = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                "",
+            ))
+        except Exception:
+            pass
+
         if "blog.naver.com/PostView.naver" in normalized_url:
             parsed = urlparse(normalized_url)
             params = parse_qs(parsed.query)
@@ -78,8 +91,19 @@ class NaverBlogCrawler:
             if blog_id and log_no:
                 return f"https://m.blog.naver.com/{blog_id}/{log_no}"
 
-        if "blog.naver.com" in normalized_url and "m.blog.naver.com" not in normalized_url:
-            return normalized_url.replace("//blog.naver.com", "//m.blog.naver.com")
+        parsed = urlparse(normalized_url)
+        host = (parsed.netloc or "").lower()
+        path = parsed.path or ""
+
+        if host == "blog.naver.com":
+            path_parts = [p for p in path.split("/") if p]
+            if len(path_parts) >= 2 and path_parts[1].isdigit():
+                return f"https://m.blog.naver.com/{path_parts[0]}/{path_parts[1]}"
+
+        if host == "m.blog.naver.com":
+            path_parts = [p for p in path.split("/") if p]
+            if len(path_parts) >= 2 and path_parts[1].isdigit():
+                return f"https://m.blog.naver.com/{path_parts[0]}/{path_parts[1]}"
 
         return normalized_url
 
@@ -92,11 +116,19 @@ class NaverBlogCrawler:
             return False
 
         path_parts = [p for p in parsed.path.split("/") if p]
-        if not path_parts:
+        if len(path_parts) < 2:
             return False
 
         first = path_parts[0].lower()
-        return first == self.blog_id.lower() or parsed.path.lower().startswith("/postview.naver")
+        second = path_parts[1] if len(path_parts) >= 2 else ""
+
+        if parsed.path.lower().startswith("/postview.naver"):
+            params = parse_qs(parsed.query)
+            blog_id = (params.get("blogId") or [""])[0].lower()
+            log_no = (params.get("logNo") or [""])[0]
+            return blog_id == self.blog_id.lower() and log_no.isdigit()
+
+        return first == self.blog_id.lower() and second.isdigit()
 
     def _can_fetch_with_robots(self, target_url: str, respect_robots: bool = True) -> bool:
         if not respect_robots:
@@ -306,14 +338,17 @@ class NaverBlogCrawler:
         discovered: List[Dict] = []
         queue = deque()
         visited = set()
+        queued = set()
 
         for seed in seed_urls:
             normalized = self._normalize_naver_post_url(seed)
-            if normalized and normalized not in visited:
+            if normalized and self._is_internal_blog_url(normalized) and normalized not in visited and normalized not in queued:
                 queue.append((normalized, 0))
+                queued.add(normalized)
 
         while queue and len(visited) < max_pages:
             current_url, depth = queue.popleft()
+            queued.discard(current_url)
             if current_url in visited:
                 continue
             visited.add(current_url)
@@ -333,8 +368,9 @@ class NaverBlogCrawler:
                     # parse_url()에서 이미 정규화되고 필터링된 링크를 받음
                     for link in post.get("links", []):
                         normalized_url = link.get("url")
-                        if normalized_url and normalized_url not in visited:
+                        if normalized_url and normalized_url not in visited and normalized_url not in queued:
                             queue.append((normalized_url, depth + 1))
+                            queued.add(normalized_url)
 
         return discovered
 

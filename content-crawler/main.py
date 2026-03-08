@@ -205,10 +205,18 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
 
             # 이벤트 날짜 추출
             extracted_dates = extractor.extract(content) if content else []
+            if extracted_dates is None:
+                extracted_dates = []
+            elif not isinstance(extracted_dates, list):
+                extracted_dates = list(extracted_dates)
 
             # 키워드 추출
             from utils.keyword_extractor import extract_keywords
             keywords = extract_keywords(content or "", top_n=5)
+            if keywords is None:
+                keywords = []
+            elif not isinstance(keywords, list):
+                keywords = list(keywords)
 
             # 이미지 메타 추출 함수
             def extract_images(html_str):
@@ -255,6 +263,10 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
             # 이미지 리스트 생성
             html_for_images = post.get("html") or content or ""
             images = extract_images(html_for_images)
+            if images is None:
+                images = []
+            elif not isinstance(images, list):
+                images = list(images)
 
             # raw_html 준비 (있으면 html 저장)
             raw_html = post.get("html") or ""
@@ -280,7 +292,7 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
             post["new"] = True
 
         except Exception as e:
-            print(f"[!] 아카이브 실패 ({title}): {e}")
+            print(f"[!] 아카이브 실패 ({title}) [{type(e).__name__}]: {e}")
 
     print(f"[+] {archived_count}개 포스트를 아카이브에 저장했습니다")
     archive_mgr.update_index(media_name, platform="mixed")
