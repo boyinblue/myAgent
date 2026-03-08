@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아카이브 대시보드</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .stat-card h3 {
+            color: #6c757d;
+            font-size: 14px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .controls {
+            padding: 20px 30px;
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .search-box {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        select {
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        
+        button:hover {
+            opacity: 0.9;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .posts-list {
+            padding: 30px;
+        }
+        
+        .post-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: box-shadow 0.2s;
+        }
+        
+        .post-item:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        
+        .post-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .platform-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .post-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #212529;
+            margin-bottom: 8px;
+        }
+        
+        .post-title a {
+            color: inherit;
+            text-decoration: none;
+        }
+        
+        .post-title a:hover {
+            color: #667eea;
+        }
+        
+        .post-meta {
+            color: #6c757d;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        
+        .post-summary {
+            color: #495057;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 30px;
+        }
+        
+        .pagination button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+        
+        .chart-container {
+            padding: 30px;
+            background: white;
+        }
+        
+        canvas {
+            max-height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📚 아카이브 대시보드</h1>
+            <p>콘텐츠 크롤링 관리 및 통계</p>
+        </header>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>전체 포스트</h3>
+                <div class="value" id="totalPosts">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>최근 30일</h3>
+                <div class="value" id="recentPosts">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>플랫폼 수</h3>
+                <div class="value" id="platformCount">-</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="platformChart"></canvas>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
+            <select id="platformFilter">
+                <option value="">전체 플랫폼</option>
+            </select>
+            <button onclick="searchPosts()">🔍 검색</button>
+            <button onclick="triggerCrawl()">🔄 크롤링 실행</button>
+        </div>
+        
+        <div class="posts-list" id="postsList">
+            <div class="loading">데이터를 불러오는 중...</div>
+        </div>
+        
+        <div class="pagination" id="pagination"></div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script>
+        let currentPage = 1;
+        let platformChart = null;
+        
+        // 통계 로드
+        async function loadStats() {
+            try {
+                const resp = await fetch('/api/stats');
+                const data = await resp.json();
+                
+                document.getElementById('totalPosts').textContent = data.total_posts.toLocaleString();
+                document.getElementById('recentPosts').textContent = data.recent_posts.toLocaleString();
+                document.getElementById('platformCount').textContent = data.platform_stats.length;
+                
+                // 플랫폼 필터 채우기
+                const platformFilter = document.getElementById('platformFilter');
+                data.platform_stats.forEach(stat => {
+                    const option = document.createElement('option');
+                    option.value = stat.platform;
+                    option.textContent = `${stat.platform} (${stat.count})`;
+                    platformFilter.appendChild(option);
+                });
+                
+                // 차트 그리기
+                drawChart(data.platform_stats);
+            } catch (e) {
+                console.error('통계 로드 실패:', e);
+            }
+        }
+        
+        // 차트 그리기
+        function drawChart(platformStats) {
+            const ctx = document.getElementById('platformChart');
+            
+            if (platformChart) {
+                platformChart.destroy();
+            }
+            
+            platformChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: platformStats.map(s => s.platform),
+                    datasets: [{
+                        label: '포스트 수',
+                        data: platformStats.map(s => s.count),
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: true,
+                            text: '플랫폼별 포스트 분포'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 포스트 목록 로드
+        async function loadPosts(page = 1) {
+            currentPage = page;
+            const search = document.getElementById('searchInput').value;
+            const platform = document.getElementById('platformFilter').value;
+            
+            const params = new URLSearchParams({
+                page: page,
+                per_page: 20,
+                search: search,
+                platform: platform
+            });
+            
+            try {
+                document.getElementById('postsList').innerHTML = '<div class="loading">데이터를 불러오는 중...</div>';
+                
+                const resp = await fetch(`/api/posts?${params}`);
+                const data = await resp.json();
+                
+                renderPosts(data.posts);
+                renderPagination(data.page, Math.ceil(data.total / data.per_page));
+            } catch (e) {
+                console.error('포스트 로드 실패:', e);
+                document.getElementById('postsList').innerHTML = '<div class="no-results">데이터를 불러올 수 없습니다.</div>';
+            }
+        }
+        
+        // 포스트 렌더링
+        function renderPosts(posts) {
+            const container = document.getElementById('postsList');
+            
+            if (posts.length === 0) {
+                container.innerHTML = '<div class="no-results">검색 결과가 없습니다.</div>';
+                return;
+            }
+            
+            container.innerHTML = posts.map(post => `
+                <div class="post-item">
+                    <div class="post-header">
+                        <span class="platform-badge">${escapeHtml(post.platform)}</span>
+                        <span class="post-meta">${escapeHtml(post.media_name)}</span>
+                    </div>
+                    <div class="post-title">
+                        <a href="${escapeHtml(post.url)}" target="_blank">${escapeHtml(post.title)}</a>
+                    </div>
+                    <div class="post-meta">
+                        📅 ${formatDate(post.published_date)} | 💾 ${formatDate(post.created_at)}
+                    </div>
+                    ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        // 페이지네이션 렌더링
+        function renderPagination(currentPage, totalPages) {
+            const container = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            let html = '';
+            
+            if (currentPage > 1) {
+                html += `<button onclick="loadPosts(${currentPage - 1})">← 이전</button>`;
+            }
+            
+            html += `<button disabled>${currentPage} / ${totalPages}</button>`;
+            
+            if (currentPage < totalPages) {
+                html += `<button onclick="loadPosts(${currentPage + 1})">다음 →</button>`;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // 검색
+        function searchPosts() {
+            loadPosts(1);
+        }
+        
+        // 크롤링 트리거
+        async function triggerCrawl() {
+            if (!confirm('크롤링을 시작하시겠습니까? (GitHub Actions 워크플로가 실행됩니다)')) {
+                return;
+            }
+            
+            try {
+                const resp = await fetch('/api/trigger-crawl', { method: 'POST' });
+                const data = await resp.json();
+                
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                } else {
+                    alert('❌ ' + (data.error || '실패'));
+                }
+            } catch (e) {
+                alert('❌ 요청 실패: ' + e.message);
+            }
+        }
+        
+        // 유틸리티 함수
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('ko-KR');
+        }
+        
+        function truncate(text, length) {
+            if (!text) return '';
+            return text.length > length ? text.substring(0, length) + '...' : text;
+        }
+        
+        // Enter 키 검색
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchPosts();
+            }
+        });
+        
+        // 초기 로드
+        loadStats();
+        loadPosts();
+    </script>
+</body>
+</html>

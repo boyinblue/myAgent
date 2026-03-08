@@ -10,6 +10,7 @@ import requests
 from github_dispatch import trigger_content_crawler_workflow
 from archive_search import search_archive
 from archive_validate import validate_archive
+from web_dashboard_launcher import launch_dashboard, stop_dashboard
 from runtime_config import get_config_value
 from shared_credentials import get_shared_secret, load_shared_environment
 
@@ -219,7 +220,7 @@ def _normalize_router_decision(parsed: dict | None) -> dict:
     url = str(parsed.get("url", "")).strip()
     keyword = str(parsed.get("keyword", "")).strip()
 
-    if action not in {"chat", "python_code", "github_action", "archive_search", "archive_validate"}:
+    if action not in {"chat", "python_code", "github_action", "archive_search", "archive_validate", "web_dashboard_launch", "web_dashboard_stop"}:
         return {"action": "chat", "skill": "fallback_chat", "reason": "router_invalid_action"}
 
     normalized = {"action": action, "skill": skill, "reason": reason}
@@ -285,6 +286,20 @@ def _has_validate_intent(text: str) -> bool:
     return any(k in lower for k in keywords) and ("아카이브" in lower or "archive" in lower or "db" in lower.replace("database", "db"))
 
 
+def _has_dashboard_launch_intent(text: str) -> bool:
+    lower = (text or "").lower()
+    dashboard_keywords = ["대시보드", "웹", "dashboard", "web"]
+    action_keywords = ["시작", "실행", "열기", "launch", "start", "open"]
+    return any(d in lower for d in dashboard_keywords) and any(a in lower for a in action_keywords)
+
+
+def _has_dashboard_stop_intent(text: str) -> bool:
+    lower = (text or "").lower()
+    dashboard_keywords = ["대시보드", "웹", "dashboard", "web"]
+    action_keywords = ["종료", "중지", "닫기", "stop", "close", "shutdown"]
+    return any(d in lower for d in dashboard_keywords) and any(a in lower for a in action_keywords)
+
+
 def _extract_search_keyword(text: str) -> str:
     """검색 의도 키워드를 제거하고 검색어를 추출합니다."""
     lower = (text or "").lower()
@@ -299,7 +314,7 @@ def decide_action(user_prompt: str, skills_md: str) -> dict:
         "You are an autopilot router. "
         "Use the skill definitions below to choose the best action. "
         "Return ONLY JSON with this schema: "
-        '{"action":"chat|python_code|github_action|archive_search|archive_validate","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}.\n\n'
+        '{"action":"chat|python_code|github_action|archive_search|archive_validate|web_dashboard_launch|web_dashboard_stop","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}.\n\n'
         f"[SKILL_DEFINITIONS]\n{skills_md}"
     )
     raw = ask_model(user_prompt, system_prompt)
@@ -387,6 +402,18 @@ def autopilot(user_prompt: str):
         result = validate_archive()
         print(result)
         return
+    
+    # 웹 대시보드 실행 의도 감지 시 즉시 실행
+    if _has_dashboard_launch_intent(user_prompt):
+        result = launch_dashboard()
+        print(result.get('message', ''))
+        return
+    
+    # 웹 대시보드 종료 의도 감지 시 즉시 실행
+    if _has_dashboard_stop_intent(user_prompt):
+        result = stop_dashboard()
+        print(result.get('message', ''))
+        return
 
     try:
         decision = decide_action(user_prompt, skills_md)
@@ -435,6 +462,16 @@ def autopilot(user_prompt: str):
     if action == "archive_validate":
         result = validate_archive()
         print(result)
+        return
+    
+    if action == "web_dashboard_launch":
+        result = launch_dashboard()
+        print(result.get('message', ''))
+        return
+    
+    if action == "web_dashboard_stop":
+        result = stop_dashboard()
+        print(result.get('message', ''))
         return
 
     try:

@@ -4,7 +4,7 @@
 
 ## Output Contract
 - 라우터 판단 결과는 JSON으로만 반환
-- 스키마: `{"action":"chat|python_code|github_action|archive_search|archive_validate","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}`
+- 스키마: `{"action":"chat|python_code|github_action|archive_search|archive_validate|web_dashboard_launch|web_dashboard_stop","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}`
 
 ## Performance Optimization
 - **Heuristic First**: URL+아카이브, 검색, 무결성 검증 등 명확한 의도는 LLM 우회하여 즉시 실행
@@ -72,10 +72,24 @@
 - **heuristic**: ("무결성"|"검증"|"누락"|"불완전"|"validate"|"integrity") + ("아카이브"|"archive"|"db") 키워드
 - **output**: 전체 건수, 누락 필드별 통계, 샘플 레코드
 
+### 7) `web_dashboard_launch`
+- **action**: `web_dashboard_launch`
+- **when**: 웹 대시보드 실행 요청
+- **heuristic**: ("대시보드"|"웹"|"dashboard"|"web") + ("시작"|"실행"|"열기"|"launch"|"start"|"open") 키워드
+- **output**: ngrok 터널 생성, 텔레그램으로 일회용 URL 전송
+
+### 8) `web_dashboard_stop`
+- **action**: `web_dashboard_stop`
+- **when**: 웹 대시보드 종료 요청
+- **heuristic**: ("대시보드"|"웹"|"dashboard"|"web") + ("종료"|"중지"|"닫기"|"stop"|"close"|"shutdown") 키워드
+- **output**: 실행 중인 대시보드 프로세스 종료
+
 ## Examples
 - "https://blog.naver.com/xxx/123 추가" → `content_crawler_dispatch` (heuristic)
 - "파이썬 검색" → `archive_search` (heuristic)
 - "아카이브 무결성 검증" → `archive_validate` (heuristic)
+- "웹 대시보드 시작" → `web_dashboard_launch` (heuristic)
+- "대시보드 종료" → `web_dashboard_stop` (heuristic)
 - "오늘 할 일 정리" → `explain_or_chat` (LLM router)
 
 ## Config & Env
