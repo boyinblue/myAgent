@@ -22,17 +22,19 @@ GOOGLE_KEY = os.getenv("GOOGLE_API_KEY")
 class YouTubeCrawler:
     """유튜브 채널의 영상을 크롤링합니다."""
 
-    def __init__(self, channel_id: Optional[str] = None, channel_url: Optional[str] = None, request_interval: float = 1.0):
+    def __init__(self, channel_id: Optional[str] = None, channel_url: Optional[str] = None, request_interval: float = 1.0, archive_mgr=None):
         """
         Args:
             channel_id: 채널 ID (예: UCxxx...) - 이 방식이 가장 안정적
             channel_url: 채널 URL (예: https://www.youtube.com/@saejinpark4614)
                         channel_id가 없으면 이 URL에서 채널 ID를 추출하려 시도
             request_interval: 요청 간격 (초)
+            archive_mgr: 아카이브 관리자 인스턴스
         """
         self.channel_id = channel_id
         self.channel_url = channel_url
         self.request_interval = request_interval
+        self.archive_mgr = archive_mgr
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
