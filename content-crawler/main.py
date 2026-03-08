@@ -339,6 +339,7 @@ def crawl_naver_blog(config: Dict, args, archive_mgr=None):
             request_interval=request_interval,
             request_interval_min=request_interval_min,
             request_interval_max=request_interval_max,
+            archive_mgr=archive_mgr,
         )
         posts = crawler.crawl(
             max_posts=args.max_posts,
@@ -378,7 +379,7 @@ def crawl_tistory_blogs(config: Dict, args, archive_mgr=None):
         print(f"\n[*] 티스토리 블로그 크롤링 시작 ({blog_name}: {blog_url})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = TistoryBlogCrawler(blog_url, request_interval=request_interval)
+        crawler = TistoryBlogCrawler(blog_url, request_interval=request_interval, archive_mgr=archive_mgr)
         posts = crawler.crawl(max_posts=args.max_posts, archive_mgr=archive_mgr)
 
         if posts:
@@ -445,7 +446,7 @@ def crawl_youtube(config: Dict, args, archive_mgr=None):
         print(f"\n[*] YouTube 채널 크롤링 시작 ({channel_name}: {channel_url}, ID: {channel_id})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = YouTubeCrawler(channel_url=channel_url, channel_id=channel_id, request_interval=request_interval)
+        crawler = YouTubeCrawler(channel_url=channel_url, channel_id=channel_id, request_interval=request_interval, archive_mgr=archive_mgr)
         videos = crawler.crawl(max_videos=args.max_posts)
 
         if videos:
