@@ -53,3 +53,15 @@ jobs:
           git add archive/archive_index.db
           git commit -m "chore: update archive index DB [skip ci]"
           git push
+
+      - name: Send Telegram Notification
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MESSAGE="✅ 콘텐츠 아카이브 추가 완료%0A%0A🔗 URL: ${{ github.event.inputs.url }}%0A📦 Workflow: ${{ github.workflow }}%0A🚀 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${MESSAGE}" \
+            -d "parse_mode=HTML" || echo "Telegram notification failed (non-blocking)"

@@ -245,7 +245,6 @@ def autopilot(user_prompt: str):
     # URL + 아카이브 의도는 LLM 라우터를 우회해 즉시 GitHub Action 실행
     detected_url = _extract_first_url(user_prompt)
     if detected_url and _has_archive_intent(user_prompt):
-        print("[ROUTER] action=github_action, skill=content_crawler_dispatch, reason=heuristic_url_archive_intent")
         result = trigger_content_crawler_workflow(detected_url)
         print(result)
         return
@@ -253,14 +252,12 @@ def autopilot(user_prompt: str):
     try:
         decision = decide_action(user_prompt, skills_md)
     except Exception as exc:
-        print(f"[ROUTER] action=chat, skill=safety_fallback, reason=router_exception:{exc}")
         print(local_natural_fallback(user_prompt, reason="router_exception"))
         return
 
     action = decision.get("action", "chat")
     skill = decision.get("skill", "unknown")
     reason = decision.get("reason", "")
-    print(f"[ROUTER] action={action}, skill={skill}, reason={reason}")
 
     if action == "python_code":
         try:
