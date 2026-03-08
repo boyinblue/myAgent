@@ -318,12 +318,85 @@ def _has_dashboard_stop_intent(text: str) -> bool:
 
 
 def _extract_search_keyword(text: str) -> str:
-    """검색 의도 키워드를 제거하고 검색어를 추출합니다."""
-    lower = (text or "").lower()
-    # 검색 키워드 제거
-    for kw in ["검색해줘", "검색해 줘", "검색", "찾아줘", "찾아 줘", "찾기", "search", "find"]:
-        lower = lower.replace(kw, "")
-    return lower.strip()
+    """검색 요청 문장에서 실제 검색어를 휴리스틱으로 추출합니다."""
+    source = (text or "").strip()
+    if not source:
+        return ""
+
+    # 따옴표 안의 문구를 우선 사용
+    quoted = re.findall(r"['\"“”‘’](.+?)['\"“”‘’]", source)
+    if quoted:
+        return quoted[0].strip()
+
+    cleaned = source
+    patterns = [
+        r"아카이브(에서|에)?",
+        r"(좀\s*)?(한\s*번\s*)?검색(해\s*줘|해줘|해\s*주세요|해주세요|해\s*봐|해봐|해\s*줘요|해줘요)?",
+        r"(좀\s*)?(한\s*번\s*)?찾(아\s*줘|아줘|아\s*주세요|아주세요|아\s*봐|아봐)?",
+        r"search(\s+for)?",
+        r"find",
+        r"related\s+to",
+        r"about",
+    ]
+    for pattern in patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+    cleaned = re.sub(r"[?!.~,]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    tail_noises = ["해줘", "해주세요", "알려줘", "보여줘", "줘", "요", "좀"]
+    for noise in tail_noises:
+        if cleaned.endswith(noise):
+            cleaned = cleaned[: -len(noise)].strip()
+
+    return cleaned
+
+
+def _normalize_search_keyword_with_llm(user_prompt: str, heuristic_keyword: str) -> str:
+    """LLM으로 검색어를 정돈합니다. 실패 시 빈 문자열을 반환합니다."""
+    if not heuristic_keyword:
+        return ""
+
+    system_prompt = (
+        "You normalize archive search queries for SQL LIKE search. "
+        "Return ONLY JSON like {\"keyword\":\"...\"}. "
+        "Keep 핵심 명사/영문 키워드, remove request words, particles, and polite endings. "
+        "Do not add explanations."
+    )
+    user_text = (
+        f"original_user_prompt: {user_prompt}\n"
+        f"heuristic_keyword: {heuristic_keyword}\n"
+        "output JSON only"
+    )
+
+    raw = ask_model(user_text, system_prompt)
+    parsed = _extract_router_json(raw)
+    if isinstance(parsed, dict):
+        keyword = str(parsed.get("keyword", "")).strip()
+        if keyword:
+            return keyword
+
+    # JSON 파싱 실패 시 텍스트 응답 폴백 처리
+    raw_text = (raw or "").strip().strip('`').strip()
+    raw_text = re.sub(r"^keyword\s*[:=]\s*", "", raw_text, flags=re.IGNORECASE).strip()
+    return raw_text
+
+
+def _prepare_search_keyword(user_prompt: str) -> str:
+    """휴리스틱 추출 후 LLM 정규화를 시도하고, 실패하면 휴리스틱 결과를 사용합니다."""
+    heuristic_keyword = _extract_search_keyword(user_prompt)
+    if not heuristic_keyword:
+        return ""
+
+    try:
+        normalized = _normalize_search_keyword_with_llm(user_prompt, heuristic_keyword)
+        normalized = (normalized or "").strip()
+        if normalized:
+            return normalized
+    except Exception:
+        pass
+
+    return heuristic_keyword
 
 
 def decide_action(user_prompt: str, skills_md: str) -> dict:
@@ -406,7 +479,7 @@ def autopilot(user_prompt: str):
     
     # 검색 의도 감지 시 즉시 검색 실행
     if _has_search_intent(user_prompt):
-        keyword = _extract_search_keyword(user_prompt)
+        keyword = _prepare_search_keyword(user_prompt)
         if keyword:
             result = search_archive(keyword)
             print(result)
@@ -468,7 +541,8 @@ def autopilot(user_prompt: str):
         return
     
     if action == "archive_search":
-        keyword = decision.get("keyword") or _extract_search_keyword(user_prompt)
+        base_query = decision.get("keyword") or user_prompt
+        keyword = _prepare_search_keyword(base_query)
         if keyword:
             result = search_archive(keyword)
             print(result)

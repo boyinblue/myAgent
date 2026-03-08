@@ -50,15 +50,17 @@ def find_ngrok_exe():
     
     return None
 
-def generate_access_token(expires_minutes=120):
-    """일회용 접속 토큰 생성 및 파일 저장"""
+def generate_access_token(expires_minutes=120, max_uses=5):
+    """접속 토큰 생성 및 파일 저장 (제한 횟수 사용)"""
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now() + timedelta(minutes=expires_minutes)
     
     token_data = {
         'created_at': datetime.now().isoformat(),
         'expires_at': expires_at.isoformat(),
-        'used': False
+        'used': False,
+        'used_count': 0,
+        'max_uses': max_uses
     }
     
     # 메모리에 저장
@@ -171,14 +173,14 @@ class NgrokManager:
             print(f"[!] ngrok API 오류: {e}")
             return None
     
-    def send_access_url(self, expires_minutes=120):
-        """일회용 토큰이 포함된 접속 URL을 텔레그램으로 전송"""
+    def send_access_url(self, expires_minutes=120, max_uses=5):
+        """토큰이 포함된 접속 URL을 텔레그램으로 전송"""
         if not self.public_url:
             print("[!] ngrok URL이 없습니다.")
             return False
         
         # 일회용 토큰 생성
-        token = generate_access_token(expires_minutes=expires_minutes)
+        token = generate_access_token(expires_minutes=expires_minutes, max_uses=max_uses)
         
         # 접속 URL
         access_url = f"{self.public_url}/?token={token}"
@@ -189,7 +191,7 @@ class NgrokManager:
 {access_url}
 
 ⚠️ **보안 안내**
-- 일회용 URL입니다 (한 번만 사용 가능)
+- 제한 횟수 URL입니다 (최대 {max_uses}회 사용 가능)
 - {expires_minutes}분 후 자동 만료됩니다
 - URL을 타인과 공유하지 마세요
 
@@ -245,7 +247,7 @@ def main():
     
     if url:
         # 텔레그램으로 접속 URL 전송
-        manager.send_access_url(expires_minutes=120)
+        manager.send_access_url(expires_minutes=120, max_uses=5)
         
         print("\n" + "="*60)
         print("웹 대시보드가 시작되었습니다.")

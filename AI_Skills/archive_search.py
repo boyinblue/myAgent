@@ -1,11 +1,29 @@
 """아카이브에서 키워드 검색"""
 import sqlite3
+import re
 from pathlib import Path
 from typing import List, Dict
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _ARCHIVE_DB = _PROJECT_ROOT / "archive" / "archive_index.db"
+
+
+def _tokenize_keyword(keyword: str) -> List[str]:
+    """입력 검색어를 토큰으로 분리합니다."""
+    normalized = re.sub(r"\s+", " ", (keyword or "").strip())
+    if not normalized:
+        return []
+
+    parts = re.split(r"[\s,|/]+", normalized)
+    tokens: List[str] = []
+    for part in parts:
+        token = part.strip().strip("'\"“”‘’()[]{}")
+        if not token:
+            continue
+        if token not in tokens:
+            tokens.append(token)
+    return tokens
 
 
 def search_archive(keyword: str, limit: int = 10) -> str:
@@ -25,14 +43,18 @@ def search_archive(keyword: str, limit: int = 10) -> str:
     keyword = (keyword or "").strip()
     if not keyword:
         return "[ERROR] 검색 키워드가 비어 있습니다."
+
+    tokens = _tokenize_keyword(keyword)
+    if not tokens:
+        return "[ERROR] 검색 키워드를 해석할 수 없습니다."
     
     try:
         conn = sqlite3.connect(_ARCHIVE_DB)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # 제목, 키워드, 태그, 미디어명에서 검색
-        query = """
+        # 제목, 키워드, 태그, 미디어명에서 토큰별 검색
+        base_select = """
         SELECT 
             title, 
             media_name, 
@@ -42,19 +64,42 @@ def search_archive(keyword: str, limit: int = 10) -> str:
             tags,
             platform
         FROM posts
-        WHERE 
-            title LIKE ? 
-            OR keywords LIKE ? 
-            OR tags LIKE ?
-            OR media_name LIKE ?
+        """
+
+        fields = ["title", "keywords", "tags", "media_name"]
+        per_token_clause = "(" + " OR ".join([f"{field} LIKE ?" for field in fields]) + ")"
+
+        # 1차: 모든 토큰이 매칭되도록 AND 검색
+        where_and = " AND ".join([per_token_clause] * len(tokens))
+        query_and = base_select + f" WHERE {where_and} " + """
         ORDER BY published_date DESC
         LIMIT ?
         """
-        
-        search_pattern = f"%{keyword}%"
-        cursor.execute(query, (search_pattern, search_pattern, search_pattern, search_pattern, limit))
-        
+
+        params_and: List[str | int] = []
+        for token in tokens:
+            pattern = f"%{token}%"
+            params_and.extend([pattern] * len(fields))
+        params_and.append(limit)
+
+        cursor.execute(query_and, params_and)
         rows = cursor.fetchall()
+
+        # 2차: 결과가 없으면 토큰 OR 검색으로 완화
+        if not rows and len(tokens) > 1:
+            where_or = " OR ".join([per_token_clause] * len(tokens))
+            query_or = base_select + f" WHERE {where_or} " + """
+            ORDER BY published_date DESC
+            LIMIT ?
+            """
+            params_or: List[str | int] = []
+            for token in tokens:
+                pattern = f"%{token}%"
+                params_or.extend([pattern] * len(fields))
+            params_or.append(limit)
+            cursor.execute(query_or, params_or)
+            rows = cursor.fetchall()
+
         conn.close()
         
         if not rows:

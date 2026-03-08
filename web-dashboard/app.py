@@ -38,7 +38,7 @@ def is_authenticated() -> bool:
     return is_local_mode() or bool(session.get('authenticated'))
 
 def validate_token(token):
-    """토큰 유효성 검증 (파일 기반)"""
+    """토큰 유효성 검증 (파일 기반, 제한 횟수 사용)"""
     try:
         # 파일에서 토큰 읽기
         if not _TOKENS_FILE.exists():
@@ -61,12 +61,21 @@ def validate_token(token):
                 json.dump(all_tokens, f)
             return False
         
-        # 사용 여부 확인 (일회용)
-        if token_info['used']:
+        used_count = int(token_info.get('used_count', 0))
+        max_uses = int(token_info.get('max_uses', 1))
+
+        # 구버전 토큰(used 플래그만 존재) 하위 호환
+        if 'used_count' not in token_info and 'used' in token_info:
+            used_count = 1 if bool(token_info.get('used')) else 0
+            max_uses = 1
+
+        if used_count >= max_uses:
             return False
         
         # 토큰 사용 처리
-        token_info['used'] = True
+        token_info['used_count'] = used_count + 1
+        token_info['max_uses'] = max_uses
+        token_info['used'] = token_info['used_count'] >= token_info['max_uses']
         all_tokens[token] = token_info
         with open(_TOKENS_FILE, 'w') as f:
             json.dump(all_tokens, f)

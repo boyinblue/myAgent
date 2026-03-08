@@ -3,6 +3,8 @@ import os
 import logging
 import sys
 import json
+import importlib
+import subprocess
 import tempfile
 import atexit
 import ctypes
@@ -30,6 +32,34 @@ try:
 except ImportError:
     autopilot = None
 
+
+def _reload_ai_skill_modules() -> bool:
+    """AI_Skills 모듈을 핫리로드하여 재시작 없이 최신 코드를 반영합니다."""
+    global autopilot
+
+    module_order = [
+        "runtime_config",
+        "shared_credentials",
+        "github_dispatch",
+        "archive_search",
+        "archive_validate",
+        "web_dashboard_launcher",
+        "autopilot",
+    ]
+
+    try:
+        for module_name in module_order:
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
+            else:
+                importlib.import_module(module_name)
+
+        autopilot = sys.modules.get("autopilot")
+        return autopilot is not None
+    except Exception as exc:
+        logging.error(f"AI_Skills 핫리로드 실패: {exc}")
+        return False
+
 # 로그 설정 (FW 디버깅용 로그처럼)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -41,8 +71,12 @@ TOKEN = (os.getenv('TELEGRAM_BOT_TOKEN') or '').strip()
 chat_id_raw = (os.getenv('TELEGRAM_CHAT_ID') or '').strip()
 CHAT_ID = int(chat_id_raw) if chat_id_raw.isdigit() else 0
 
+EXPECTED_VENV_PYTHON = str((Path(parent_dir) / ".venv" / "Scripts" / "python.exe").resolve())
+CURRENT_PYTHON = str(Path(sys.executable).resolve())
+
 print(f"[*] Telegram Bot Token: {'Set' if TOKEN else 'Not Set'}")
 print(f"[*] Telegram Chat ID: {'Set' if CHAT_ID else 'Not Set'}")
+print(f"[*] Python executable: {CURRENT_PYTHON}")
 
 
 def _resolve_chatbot_log_file() -> Path:
@@ -230,6 +264,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_message(chat_id=chat_id, text=f"추론중...")
 
+    if not _reload_ai_skill_modules() or autopilot is None:
+        await context.bot.send_message(chat_id=chat_id, text="❌ 내부 모듈 로드 실패: AI_Skills를 확인해주세요.")
+        _append_chatbot_log(
+            event="reload_failed",
+            chat_id=chat_id,
+            user_text=user_text,
+            error="hot_reload_failed",
+        )
+        return
+
     # 2. 다른 모듈의 함수를 실행하고 표준 출력을 가져오는 핵심 로직
     f = io.StringIO()
     try:
@@ -272,6 +316,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.close()
 
 if __name__ == '__main__':
+    if CURRENT_PYTHON.lower() != EXPECTED_VENV_PYTHON.lower():
+        print("[!] 잘못된 Python 환경으로 실행되었습니다.")
+        print(f"[!] 현재: {CURRENT_PYTHON}")
+        print(f"[!] 권장: {EXPECTED_VENV_PYTHON}")
+        print("[!] 아래 명령으로 실행하세요:")
+        print(f"    {EXPECTED_VENV_PYTHON} chatbot/telegram_bot.py")
+        sys.exit(1)
+
     if not _acquire_single_instance_lock(BOT_LOCK_FILE):
         _append_chatbot_log(event="startup_blocked", chat_id=CHAT_ID, error="duplicate_instance")
         sys.exit(1)
