@@ -10,21 +10,51 @@ import os
 import sys
 import subprocess
 import signal
+import shutil
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent
 web_dashboard_dir = project_root / "web-dashboard"
 
+def find_ngrok_exe():
+    """ngrok 실행 파일 찾기"""
+    # 1. shutil.which로 PATH에서 찾기
+    ngrok_path = shutil.which('ngrok')
+    if ngrok_path:
+        return ngrok_path
+    
+    # 2. 설치된 경로들에서 찾기 (Windows)
+    possible_paths = [
+        Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs' / 'ngrok' / 'ngrok.exe',
+        Path(os.environ.get('ProgramFiles', 'C:\\Program Files')) / 'ngrok' / 'ngrok.exe',
+        Path('C:\\Program Files (x86)') / 'ngrok' / 'ngrok.exe',
+        Path(os.environ.get('USERPROFILE', '')) / 'ngrok' / 'ngrok.exe',
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            return str(path)
+    
+    return None
+
 def launch_dashboard():
     """웹 대시보드 실행"""
     
     # ngrok 설치 확인
-    try:
-        subprocess.run(['ngrok', 'version'], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    ngrok_exe = find_ngrok_exe()
+    if not ngrok_exe:
         return {
             'success': False,
             'message': '❌ ngrok이 설치되어 있지 않습니다.\n\n설치: https://ngrok.com/download'
+        }
+    
+    # ngrok 정상 작동 확인
+    try:
+        subprocess.run([ngrok_exe, 'version'], capture_output=True, check=True, timeout=5)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        return {
+            'success': False,
+            'message': f'❌ ngrok 실행 오류: {e}\n\n설치를 다시 확인해주세요.'
         }
     
     # 이미 실행 중인지 확인 (PID 파일)
