@@ -1,6 +1,6 @@
 # Autopilot Skills Specification
 
-이 문서는 `autopilot.py`가 사용자 요청을 어떤 스킬로 처리할지 판단할 때 사용하는 규칙입니다.
+이 문서는 `autopilot.py`가 LLM 라우팅/응답 생성 시 참조하는 스킬 규칙만 담습니다.
 
 ## Output Contract
 - 라우터 판단 결과는 JSON으로만 반환
@@ -82,4 +82,5 @@
 - 비보안 설정: `config.json`의 `autopilot` 섹션
 - 보안 크레덴셜: 루트 `.env`
 - `.env` 직접 수정 금지, `.env.example`만 업데이트
+
 

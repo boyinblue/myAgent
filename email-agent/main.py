@@ -26,9 +26,9 @@ def interactive_loop(summaries, dry_run: bool, whitelist: Whitelist):
         else:
             print("     수신거부 후보 없음")
         
-        # Y/N 입력 받기
+        # Y/N/S 입력 받기
         while True:
-            choice = input("\n수신거부 하시겠습니까? (Y/N/q=종료): ").strip().upper()
+            choice = input("\n수신거부 하시겠습니까? (Y=실행/N=화이트리스트/s=건너뛰기/q=종료): ").strip().upper()
             if choice in ("Q", "QUIT", "EXIT"):
                 print("종료합니다.")
                 return
@@ -53,8 +53,11 @@ def interactive_loop(summaries, dry_run: bool, whitelist: Whitelist):
                 whitelist.add(summary.sender_email)
                 print(f"✅ [{summary.sender_email}] 화이트리스트에 추가됨")
                 break
+            elif choice == "S":
+                print(f"⏭️ [{summary.sender_email}] 건너뜀 (화이트리스트 추가 안 함)")
+                break
             else:
-                print("Y 또는 N을 입력하세요.")
+                print("Y, N, S, Q 중 하나를 입력하세요.")
     
     print(f"\n✅ 모든 발신자 처리 완료 (화이트리스트: {len(whitelist)}개)")
 

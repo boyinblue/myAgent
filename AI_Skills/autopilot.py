@@ -16,6 +16,7 @@ from shared_credentials import get_shared_secret, load_shared_environment
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILLS_MD_PATH = os.path.join(ROOT_DIR, "SKILLS.md")
+DEFAULT_SKILLS_PROMPT_MAX_CHARS = 4500
 
 load_shared_environment()
 
@@ -25,6 +26,86 @@ def load_skills_markdown() -> str:
         return ""
     with open(SKILLS_MD_PATH, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def _extract_markdown_section(markdown_text: str, heading: str) -> str:
+    lines = (markdown_text or "").splitlines()
+    if not lines:
+        return ""
+
+    start = -1
+    for i, line in enumerate(lines):
+        if line.strip() == heading.strip():
+            start = i
+            break
+    if start < 0:
+        return ""
+
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+
+    return "\n".join(lines[start:end]).strip()
+
+
+def _compact_markdown(markdown_text: str) -> str:
+    compact_lines = []
+    for raw in (markdown_text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            compact_lines.append(line)
+            continue
+        if line.startswith("-"):
+            compact_lines.append(line)
+            continue
+        if line.startswith("###"):
+            compact_lines.append(line)
+            continue
+        compact_lines.append(re.sub(r"\s+", " ", line))
+    return "\n".join(compact_lines).strip()
+
+
+def get_skills_prompt_max_chars() -> int:
+    raw = get_config_value(
+        "autopilot.skills_prompt_max_chars",
+        os.getenv("AUTOPILOT_SKILLS_MAX_CHARS", str(DEFAULT_SKILLS_PROMPT_MAX_CHARS)),
+    )
+    try:
+        value = int(raw)
+        return max(1000, min(value, 20000))
+    except Exception:
+        return DEFAULT_SKILLS_PROMPT_MAX_CHARS
+
+
+def build_skills_context(skills_md: str, max_chars: int) -> str:
+    content = (skills_md or "").strip()
+    if not content:
+        return ""
+
+    if len(content) <= max_chars:
+        return content
+
+    selected_sections = []
+    for heading in ["## Output Contract", "## Skills", "## Examples", "## Config & Env"]:
+        section = _extract_markdown_section(content, heading)
+        if section:
+            selected_sections.append(section)
+
+    if not selected_sections:
+        compact = _compact_markdown(content)
+        return compact[:max_chars]
+
+    merged = "\n\n".join(selected_sections)
+    compact = _compact_markdown(merged)
+    if len(compact) <= max_chars:
+        return compact
+
+    tail_note = "\n\n[skills_context_truncated]"
+    return compact[: max_chars - len(tail_note)] + tail_note
 
 
 def ask_ollama(prompt: str, system_prompt: str, model: str = "gemma2:9b") -> str:
@@ -218,7 +299,7 @@ def decide_action(user_prompt: str, skills_md: str) -> dict:
         "You are an autopilot router. "
         "Use the skill definitions below to choose the best action. "
         "Return ONLY JSON with this schema: "
-        '{"action":"chat|python_code|github_action","skill":"skill_name","reason":"short reason","url":"optional_target_url"}.\n\n'
+        '{"action":"chat|python_code|github_action|archive_search|archive_validate","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}.\n\n'
         f"[SKILL_DEFINITIONS]\n{skills_md}"
     )
     raw = ask_model(user_prompt, system_prompt)
@@ -281,7 +362,8 @@ def execute_script(script_path: str):
 
 
 def autopilot(user_prompt: str):
-    skills_md = load_skills_markdown()
+    raw_skills_md = load_skills_markdown()
+    skills_md = build_skills_context(raw_skills_md, get_skills_prompt_max_chars())
 
     # URL + 아카이브 의도는 LLM 라우터를 우회해 즉시 GitHub Action 실행
     detected_url = _extract_first_url(user_prompt)

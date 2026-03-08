@@ -1,49 +1,69 @@
-# google_search.py
 import requests
-import json
+from typing import Dict, List, Optional
 
-def google_search(search_term, api_key, cse_id, **kwargs):
-    """
-    Google Custom Search API를 사용하여 검색 결과를 가져옵니다.
-    """
+
+def google_search(search_term: str, api_key: str, cse_id: str, **kwargs) -> Optional[Dict]:
+    """Google Custom Search API를 사용하여 검색 결과를 가져옵니다."""
     service_url = "https://www.googleapis.com/customsearch/v1"
     params = {
-        'q': search_term,
-        'key': api_key,
-        'cx': cse_id,
+        "q": search_term,
+        "key": api_key,
+        "cx": cse_id,
     }
     params.update(kwargs)
-    
+
     try:
-        response = requests.get(service_url, params=params)
+        response = requests.get(service_url, params=params, timeout=20)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"[!] Google Search API 오류: {e}")
         return None
 
-def display_results(results):
-    """
-    검색 결과 중 제목, 링크, 요약 내용을 출력합니다.
-    """
-    if not results or 'items' not in results:
-        print("검색 결과가 없습니다.")
-        return
 
-    for i, item in enumerate(results['items'], 1):
-        print(f"{i}. {item['title']}")
-        print(f"   Link: {item['link']}")
-        print(f"   Snippet: {item['snippet']}\n")
+def search_naver_blog_posts(
+    blog_id: str,
+    api_key: str,
+    cse_id: str,
+    max_results: int = 100,
+) -> List[Dict]:
+    """Google 검색으로 특정 네이버 블로그 포스트 URL을 수집합니다."""
+    if not blog_id or not api_key or not cse_id:
+        return []
 
-if __name__ == "__main__":
-    # 할당받은 API 키와 CX ID를 입력하세요.
-    # .env 파일에서 불러오도록 수정하여 사용하는 것을 권장합니다.
-    API_KEY = "YOUR_GOOGLE_API_KEY"
-    CSE_ID = "YOUR_CUSTOM_SEARCH_ENGINE_ID"
-    
-    query = "안양 마라톤 코스 추천"
-    
-    print(f"🔍 '{query}' 검색 중...\n")
-    search_results = google_search(query, API_KEY, CSE_ID)
-    
-    display_results(search_results)
+    query = f'site:blog.naver.com/{blog_id}'
+    collected: List[Dict] = []
+    start = 1
+
+    while len(collected) < max_results and start <= 91:
+        payload = google_search(
+            query,
+            api_key,
+            cse_id,
+            num=min(10, max_results - len(collected)),
+            start=start,
+        )
+        if not payload:
+            break
+
+        items = payload.get("items", [])
+        if not items:
+            break
+
+        for item in items:
+            link = (item.get("link") or "").strip()
+            if f"blog.naver.com/{blog_id}" not in link:
+                continue
+
+            collected.append(
+                {
+                    "title": item.get("title", "제목 없음"),
+                    "published": "",
+                    "link": link,
+                    "summary": item.get("snippet", ""),
+                }
+            )
+
+        start += 10
+
+    return collected

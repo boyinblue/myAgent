@@ -1,6 +1,0 @@
-{
-    "model": "gemma2:9b",
-    "rag_settings": {
-        "docs_path": "../archive"
-    }
-}

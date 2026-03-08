@@ -320,13 +320,35 @@ def crawl_naver_blog(config: Dict, args, archive_mgr=None):
         platform_type = info.get("platform_type", "NaverBlog")
         blog_id = info.get("blog_id")
         request_interval = info.get("request_interval_seconds", 1.0)
+        request_interval_min = info.get("request_interval_min_seconds", request_interval)
+        request_interval_max = info.get("request_interval_max_seconds", request_interval)
+        follow_internal_links = bool(info.get("follow_internal_links", False))
+        internal_max_pages = int(info.get("internal_max_pages", 100))
+        internal_max_depth = int(info.get("internal_max_depth", 2))
+        respect_robots = bool(info.get("respect_robots_txt", True))
+        use_google_search = bool(info.get("use_google_search", False))
+        google_cse_id = str(info.get("google_cse_id", "")).strip()
         rss_url = info.get("rss_url")
 
         print(f"\n[*] 네이버 블로그 크롤링 시작 (블로그: {blog_id})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = NaverBlogCrawler(blog_id, rss_url=rss_url, request_interval=request_interval)
-        posts = crawler.crawl(max_posts=args.max_posts)
+        crawler = NaverBlogCrawler(
+            blog_id,
+            rss_url=rss_url,
+            request_interval=request_interval,
+            request_interval_min=request_interval_min,
+            request_interval_max=request_interval_max,
+        )
+        posts = crawler.crawl(
+            max_posts=args.max_posts,
+            follow_internal_links=follow_internal_links,
+            internal_max_pages=internal_max_pages,
+            internal_max_depth=internal_max_depth,
+            respect_robots=respect_robots,
+            use_google_search=use_google_search,
+            google_cse_id=google_cse_id,
+        )
 
         if posts:
             archive_posts(posts, archive_mgr, platform_type, blog_id)

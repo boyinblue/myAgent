@@ -19,7 +19,15 @@
           "platform_type": "NaverBlog",
           "blog_id": "boyinblue",
           "rss_url": "https://rss.blog.naver.com/boyinblue.xml",
-          "request_interval_seconds": 0.5
+          "request_interval_seconds": 0.5,
+          "request_interval_min_seconds": 0.4,
+          "request_interval_max_seconds": 1.2,
+          "follow_internal_links": true,
+          "internal_max_pages": 200,
+          "internal_max_depth": 2,
+          "respect_robots_txt": true,
+          "use_google_search": true,
+          "google_cse_id": ""
         },
         {
           "platform_type": "NaverBlog",
@@ -87,6 +95,7 @@
   "raw_directory": "./content-crawler/raw",
   "autopilot": {
     "provider": "ollama",
+    "skills_prompt_max_chars": 4500,
     "models": {
       "ollama": "gemma2:9b",
       "gemini": "gemini-1.5-flash"

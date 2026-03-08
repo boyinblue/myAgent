@@ -9,17 +9,34 @@ import os
 import feedparser
 import requests
 import urllib.request
+import urllib.parse
 import json
 from typing import Dict, Optional, List
 from datetime import datetime
 import time
-from urllib.parse import urlparse, parse_qs
+import random
+from collections import deque
+from urllib.parse import urlparse, parse_qs, urljoin
+from urllib import robotparser
+
+try:
+    from crawlers.google_api import search_naver_blog_posts
+except Exception:
+    search_naver_blog_posts = None
 
 
 class NaverBlogCrawler:
     """네이버 블로그 크롤러"""
 
-    def __init__(self, blog_id: str, rss_url: str = None, request_interval: float = 1.0, archive_mgr=None):
+    def __init__(
+        self,
+        blog_id: str,
+        rss_url: str = None,
+        request_interval: float = 1.0,
+        archive_mgr=None,
+        request_interval_min: float = None,
+        request_interval_max: float = None,
+    ):
         """
         Args:
             blog_id: 블로그 ID (예: boyinblue)
@@ -35,9 +52,76 @@ class NaverBlogCrawler:
         else:
             self.rss_url = f"https://rss.blog.naver.com/{blog_id}.xml"
         self.request_interval = request_interval
+        self.request_interval_min = request_interval if request_interval_min is None else request_interval_min
+        self.request_interval_max = request_interval if request_interval_max is None else request_interval_max
+        if self.request_interval_min > self.request_interval_max:
+            self.request_interval_min, self.request_interval_max = self.request_interval_max, self.request_interval_min
+        self._robots_cache = {}
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
+
+    def _sleep_with_jitter(self):
+        delay = random.uniform(self.request_interval_min, self.request_interval_max)
+        time.sleep(max(0.0, delay))
+
+    def _normalize_naver_post_url(self, url: str) -> str:
+        if not url:
+            return ""
+        normalized_url = url.strip()
+
+        if "blog.naver.com/PostView.naver" in normalized_url:
+            parsed = urlparse(normalized_url)
+            params = parse_qs(parsed.query)
+            blog_id = (params.get("blogId") or [""])[0]
+            log_no = (params.get("logNo") or [""])[0]
+            if blog_id and log_no:
+                return f"https://m.blog.naver.com/{blog_id}/{log_no}"
+
+        if "blog.naver.com" in normalized_url and "m.blog.naver.com" not in normalized_url:
+            return normalized_url.replace("//blog.naver.com", "//m.blog.naver.com")
+
+        return normalized_url
+
+    def _is_internal_blog_url(self, url: str) -> bool:
+        if not url:
+            return False
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").lower()
+        if host not in {"blog.naver.com", "m.blog.naver.com"}:
+            return False
+
+        path_parts = [p for p in parsed.path.split("/") if p]
+        if not path_parts:
+            return False
+
+        first = path_parts[0].lower()
+        return first == self.blog_id.lower() or parsed.path.lower().startswith("/postview.naver")
+
+    def _can_fetch_with_robots(self, target_url: str, respect_robots: bool = True) -> bool:
+        if not respect_robots:
+            return True
+
+        parsed = urlparse(target_url)
+        host = parsed.netloc.lower()
+        if not host:
+            return False
+
+        rp = self._robots_cache.get(host)
+        if rp is None:
+            robots_url = f"{parsed.scheme or 'https'}://{host}/robots.txt"
+            rp = robotparser.RobotFileParser()
+            rp.set_url(robots_url)
+            try:
+                rp.read()
+            except Exception:
+                return True
+            self._robots_cache[host] = rp
+
+        try:
+            return rp.can_fetch(self.headers.get("User-Agent", "*"), target_url)
+        except Exception:
+            return True
 
     def save_page_to_file(self, url, content):
         """다운로드 받은 페이지를 파일로 저장합니다."""
@@ -104,26 +188,21 @@ class NaverBlogCrawler:
 
         return posts
 
-    def parse_url(self, url):
+    def parse_url(self, url, respect_robots: bool = True):
         """단일 URL을 파싱하여 포스트 정보를 리턴합니다."""
         print(f"[*] {url}에서 포스트 정보 추출 중...")
 
         try:
-            normalized_url = url
-
-            # 네이버 블로그는 모바일 도메인에서 og:title이 더 안정적으로 제공됨
-            if "blog.naver.com/PostView.naver" in normalized_url:
-                parsed = urlparse(normalized_url)
-                params = parse_qs(parsed.query)
-                blog_id = (params.get("blogId") or [""])[0]
-                log_no = (params.get("logNo") or [""])[0]
-                if blog_id and log_no:
-                    normalized_url = f"https://m.blog.naver.com/{blog_id}/{log_no}"
-            elif "blog.naver.com" in normalized_url and "m.blog.naver.com" not in normalized_url:
-                normalized_url = normalized_url.replace("//blog.naver.com", "//m.blog.naver.com")
+            normalized_url = self._normalize_naver_post_url(url)
 
             if normalized_url != url:
                 print(f"[*] 모바일 URL로 변환: {normalized_url}")
+
+            if not self._can_fetch_with_robots(normalized_url, respect_robots=respect_robots):
+                print(f"[i] robots.txt 정책으로 건너뜀: {normalized_url}")
+                return None
+
+            self._sleep_with_jitter()
 
             resp = requests.get(normalized_url, headers=self.headers, timeout=10)
             resp.raise_for_status()
@@ -202,6 +281,52 @@ class NaverBlogCrawler:
 
         return None
 
+    def crawl_internal_links(
+        self,
+        seed_urls: List[str],
+        max_pages: int = 100,
+        max_depth: int = 2,
+        respect_robots: bool = True,
+    ) -> List[Dict]:
+        """내부 링크를 BFS로 순회하며 포스트를 수집합니다."""
+        discovered: List[Dict] = []
+        queue = deque()
+        visited = set()
+
+        for seed in seed_urls:
+            normalized = self._normalize_naver_post_url(seed)
+            if normalized and normalized not in visited:
+                queue.append((normalized, 0))
+
+        while queue and len(visited) < max_pages:
+            current_url, depth = queue.popleft()
+            if current_url in visited:
+                continue
+            visited.add(current_url)
+
+            if not self._is_internal_blog_url(current_url):
+                continue
+
+            if not self._can_fetch_with_robots(current_url, respect_robots=respect_robots):
+                print(f"[i] robots.txt 정책으로 건너뜀: {current_url}")
+                continue
+
+            post = self.parse_url(current_url, respect_robots=respect_robots)
+            if post:
+                discovered.append(post)
+
+                if depth < max_depth:
+                    for link in post.get("links", []):
+                        href = (link.get("url") or "").strip()
+                        if not href:
+                            continue
+                        absolute = urljoin(current_url, href)
+                        normalized = self._normalize_naver_post_url(absolute)
+                        if self._is_internal_blog_url(normalized) and normalized not in visited:
+                            queue.append((normalized, depth + 1))
+
+        return discovered
+
     def get_naver_blog_list(self, client_id, client_secret, blog_id):
         results = []
         display = 100  # 한 번에 가져올 개수 (최대 100)
@@ -253,6 +378,12 @@ class NaverBlogCrawler:
     def crawl(
         self,
         max_posts: int = None,
+        follow_internal_links: bool = False,
+        internal_max_pages: int = 100,
+        internal_max_depth: int = 2,
+        respect_robots: bool = True,
+        use_google_search: bool = False,
+        google_cse_id: str = "",
     ) -> List[Dict]:
         """
         블로그를 크롤링합니다.
@@ -282,6 +413,40 @@ class NaverBlogCrawler:
             api_posts = self.get_naver_blog_list(client_id, client_secret, self.blog_id)
             print(f"Raw Data from Naver API: {api_posts[:2]}...")  # API 응답의 일부를 출력하여 확인
             posts.extend(api_posts)
+
+        if use_google_search and search_naver_blog_posts:
+            google_key = os.getenv("GOOGLE_API_KEY")
+            cse_id = (google_cse_id or os.getenv("GOOGLE_CSE_ID") or "").strip()
+            if google_key and cse_id:
+                print(f"[*] Google Custom Search로 site:blog.naver.com/{self.blog_id} 검색 중...")
+                google_posts = search_naver_blog_posts(self.blog_id, google_key, cse_id, max_results=100)
+                posts.extend(google_posts)
+
+        # 링크 중복 제거
+        dedup = {}
+        for post in posts:
+            link = self._normalize_naver_post_url(post.get("link", ""))
+            if not link:
+                continue
+            post["link"] = link
+            dedup[link] = post
+        posts = list(dedup.values())
+
+        if follow_internal_links:
+            seed_urls = [p.get("link", "") for p in posts if p.get("link")]
+            internal_posts = self.crawl_internal_links(
+                seed_urls=seed_urls,
+                max_pages=internal_max_pages,
+                max_depth=internal_max_depth,
+                respect_robots=respect_robots,
+            )
+            for post in internal_posts:
+                link = self._normalize_naver_post_url(post.get("link", ""))
+                if not link:
+                    continue
+                post["link"] = link
+                dedup[link] = post
+            posts = list(dedup.values())
 
         print(f"[+] 총 {len(posts)}개 포스트 크롤링 완료")
         return posts
