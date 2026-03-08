@@ -1,3 +1,6 @@
+import re
+from datetime import datetime, timezone
+
 import requests
 
 from runtime_config import get_config_value
@@ -75,12 +78,199 @@ def _diagnose_not_found(repo: str, workflow: str, ref: str, headers: dict) -> st
     )
 
 
-def trigger_content_crawler_workflow(target_url: str) -> str:
-    token = (get_shared_secret("GITHUB_TOKEN") or "").strip()
-    repo = _first_valid(
+def _resolve_github_repo() -> str:
+    return _first_valid(
         str(get_config_value("autopilot.github_dispatch.repo", "")),
         get_shared_secret("GITHUB_REPO", ""),
     )
+
+
+def _build_issue_payload(user_prompt: str) -> tuple[str, str]:
+    raw = (user_prompt or "").strip()
+    if not raw:
+        now = datetime.now(timezone.utc).isoformat()
+        return ("챗봇 사용 중 불편사항 제보", f"## 요약\n(내용 없음)\n\n## 원문\n\n\n## 등록 시각(UTC)\n{now}")
+
+    cleaned = raw
+    cleanup_patterns = [
+        r"github\s*(repo)?\s*issue",
+        r"이슈",
+        r"issue",
+        r"등록(해\s*줘|해주세요|해줘)?",
+        r"생성(해\s*줘|해주세요|해줘)?",
+        r"올려(줘|주세요)?",
+        r"만들어(줘|주세요)?",
+        r"작성(해\s*줘|해주세요|해줘)?",
+        r"해결(해\s*줘|해주세요|해줘)?",
+        r"부탁(해\s*요|해요)?",
+    ]
+    for pattern in cleanup_patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,:;!?")
+    summary = cleaned or raw
+    if len(summary) > 120:
+        summary = summary[:117].rstrip() + "..."
+
+    title = f"[챗봇 피드백] {summary}"
+
+    now = datetime.now(timezone.utc).isoformat()
+    body = (
+        "## 요약\n"
+        f"{summary}\n\n"
+        "## 원문\n"
+        f"{raw}\n\n"
+        "## 등록 시각(UTC)\n"
+        f"{now}\n"
+    )
+    return title, body
+
+
+def _resolve_issue_labels() -> list[str]:
+    labels_config = get_config_value("autopilot.github_issue.labels", [])
+    
+    # config.json에서 리스트로 바로 받거나, 쉼표 구분 문자열 처리
+    if isinstance(labels_config, list):
+        labels = [str(label).strip() for label in labels_config if str(label).strip()]
+        return labels if labels else ["chatbot", "feedback"]
+    
+    configured_str = str(labels_config).strip()
+    if not configured_str:
+        return ["chatbot", "feedback"]
+    
+    labels = [token.strip() for token in configured_str.split(",") if token.strip()]
+    return labels or ["chatbot", "feedback"]
+
+
+def _find_similar_issues(repo: str, title: str, token: str, threshold: float = 0.6) -> list[dict]:
+    """기존 이슈 중 제목이 유사한 것을 검색합니다."""
+    check_duplicates = bool(get_config_value("autopilot.github_issue.check_duplicates", True))
+    if not check_duplicates:
+        return []
+
+    endpoint = f"https://api.github.com/repos/{repo}/issues"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    params = {
+        "state": "all",
+        "labels": "chatbot,feedback",
+        "per_page": 30,
+        "sort": "created",
+        "direction": "desc",
+    }
+
+    try:
+        resp = requests.get(endpoint, headers=headers, params=params, timeout=15)
+        if resp.status_code != 200:
+            return []
+        
+        issues = resp.json() if resp.content else []
+        if not isinstance(issues, list):
+            return []
+
+        # 간단한 단어 기반 유사도 계산
+        def calc_similarity(title1: str, title2: str) -> float:
+            words1 = set(re.findall(r'\w+', title1.lower()))
+            words2 = set(re.findall(r'\w+', title2.lower()))
+            if not words1 or not words2:
+                return 0.0
+            intersection = len(words1 & words2)
+            union = len(words1 | words2)
+            return intersection / union if union > 0 else 0.0
+
+        similar = []
+        for issue in issues:
+            issue_title = str(issue.get("title", ""))
+            similarity = calc_similarity(title, issue_title)
+            if similarity >= threshold:
+                similar.append({
+                    "number": issue.get("number"),
+                    "title": issue_title,
+                    "state": issue.get("state"),
+                    "url": issue.get("html_url"),
+                    "similarity": round(similarity, 2),
+                })
+        
+        return sorted(similar, key=lambda x: x["similarity"], reverse=True)[:3]
+    except Exception:
+        return []
+
+
+def create_github_issue_from_feedback(user_prompt: str) -> str:
+    token = (get_shared_secret("GITHUB_TOKEN") or "").strip()
+    repo = _resolve_github_repo()
+
+    if not token:
+        return "[ERROR] GITHUB_TOKEN이 설정되지 않았습니다."
+    if not repo or "/" not in repo:
+        return "[ERROR] GitHub repo 설정이 비어있거나 플레이스홀더입니다. content-crawler/config.json의 autopilot.github_dispatch.repo를 실제 owner/repo로 설정하거나, .env의 GITHUB_REPO를 설정하세요."
+
+    title, body = _build_issue_payload(user_prompt)
+    labels = _resolve_issue_labels()
+
+    # 유사 이슈 검색
+    threshold = float(get_config_value("autopilot.github_issue.similarity_threshold", 0.6))
+    similar_issues = _find_similar_issues(repo, title, token, threshold)
+    
+    if similar_issues:
+        result_lines = ["[INFO] 유사한 이슈가 이미 존재합니다. 새 이슈를 생성하지 않았습니다.\n"]
+        for idx, issue in enumerate(similar_issues, 1):
+            state_emoji = "🟢" if issue["state"] == "open" else "🔴"
+            result_lines.append(
+                f"{idx}. {state_emoji} #{issue['number']}: {issue['title']}\n"
+                f"   유사도: {issue['similarity']*100:.0f}% | {issue['url']}"
+            )
+        return "\n".join(result_lines)
+
+    endpoint = f"https://api.github.com/repos/{repo}/issues"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    payload = {
+        "title": title,
+        "body": body,
+        "labels": labels,
+    }
+
+    resp = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+
+    if resp.status_code == 201:
+        data = resp.json() if resp.content else {}
+        issue_url = data.get("html_url", "") if isinstance(data, dict) else ""
+        issue_number = data.get("number", "") if isinstance(data, dict) else ""
+        return f"[OK] GitHub Issue 생성 성공: #{issue_number} {issue_url}".strip()
+
+    detail = ""
+    try:
+        body_data = resp.json()
+        detail = body_data.get("message") if isinstance(body_data, dict) else str(body_data)
+    except Exception:
+        detail = (resp.text or "")[:500]
+
+    guide = ""
+    if resp.status_code == 401:
+        guide = "토큰이 유효하지 않습니다. GITHUB_TOKEN(PAT)을 재발급하고 만료 여부를 확인하세요."
+    elif resp.status_code == 403:
+        guide = "권한이 부족합니다. 토큰에 Issues(write) 또는 repo 권한이 필요합니다."
+    elif resp.status_code == 404:
+        guide = f"리포를 찾지 못했습니다. repo={repo} 설정과 토큰 접근 권한을 확인하세요."
+    elif resp.status_code == 422:
+        guide = "중복/검증 실패일 수 있습니다. 제목/본문/라벨 값을 확인하세요."
+
+    if guide:
+        return f"[ERROR] GitHub Issue 생성 실패: status={resp.status_code}, detail={detail}. 가이드: {guide}"
+
+    return f"[ERROR] GitHub Issue 생성 실패: status={resp.status_code}, detail={detail}"
+
+
+def trigger_content_crawler_workflow(target_url: str) -> str:
+    token = (get_shared_secret("GITHUB_TOKEN") or "").strip()
+    repo = _resolve_github_repo()
     workflow = _first_valid(
         str(get_config_value("autopilot.github_dispatch.workflow_file", "")),
         get_shared_secret("GITHUB_WORKFLOW_FILE", "run_crowler.yml"),

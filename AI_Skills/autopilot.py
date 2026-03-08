@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from github_dispatch import trigger_content_crawler_workflow
+from github_dispatch import trigger_content_crawler_workflow, create_github_issue_from_feedback
 from archive_search import search_archive
 from archive_validate import validate_archive
 from web_dashboard_launcher import launch_dashboard, stop_dashboard
@@ -220,7 +220,7 @@ def _normalize_router_decision(parsed: dict | None) -> dict:
     url = str(parsed.get("url", "")).strip()
     keyword = str(parsed.get("keyword", "")).strip()
 
-    if action not in {"chat", "python_code", "github_action", "archive_search", "archive_validate", "web_dashboard_launch", "web_dashboard_stop"}:
+    if action not in {"chat", "python_code", "github_action", "github_issue", "archive_search", "archive_validate", "web_dashboard_launch", "web_dashboard_stop"}:
         return {"action": "chat", "skill": "fallback_chat", "reason": "router_invalid_action"}
 
     normalized = {"action": action, "skill": skill, "reason": reason}
@@ -270,6 +270,49 @@ def _has_search_intent(text: str) -> bool:
         "find",
     ]
     return any(k in lower for k in keywords)
+
+
+def _has_issue_intent(text: str) -> bool:
+    lower = (text or "").lower()
+    issue_terms = [
+        "이슈",
+        "issue",
+        "깃허브 이슈",
+        "github issue",
+    ]
+    create_terms = [
+        "등록",
+        "생성",
+        "작성",
+        "올려",
+        "만들",
+        "create",
+        "open",
+        "report",
+    ]
+    discomfort_terms = [
+        "불편",
+        "안돼",
+        "안 됨",
+        "문제",
+        "오류",
+        "버그",
+        "에러",
+        "개선",
+        "개선해줘",
+    ]
+
+    explicit_issue = any(term in lower for term in issue_terms)
+    create_request = any(term in lower for term in create_terms)
+    has_discomfort = any(term in lower for term in discomfort_terms)
+
+    if explicit_issue and create_request:
+        return True
+
+    if ("github" in lower or "깃허브" in lower) and (explicit_issue or has_discomfort) and create_request:
+        return True
+
+    return False
 
 
 def _has_validate_intent(text: str) -> bool:
@@ -404,7 +447,7 @@ def decide_action(user_prompt: str, skills_md: str) -> dict:
         "You are an autopilot router. "
         "Use the skill definitions below to choose the best action. "
         "Return ONLY JSON with this schema: "
-        '{"action":"chat|python_code|github_action|archive_search|archive_validate|web_dashboard_launch|web_dashboard_stop","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}.\n\n'
+        '{"action":"chat|python_code|github_action|github_issue|archive_search|archive_validate|web_dashboard_launch|web_dashboard_stop","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}.\n\n'
         f"[SKILL_DEFINITIONS]\n{skills_md}"
     )
     raw = ask_model(user_prompt, system_prompt)
@@ -486,6 +529,12 @@ def autopilot(user_prompt: str):
         else:
             print("❌ 검색할 키워드를 입력해주세요.")
         return
+
+    # GitHub 이슈 등록 의도 감지 시 즉시 실행
+    if _has_issue_intent(user_prompt):
+        result = create_github_issue_from_feedback(user_prompt)
+        print(result)
+        return
     
     # 무결성 검증 의도 감지 시 즉시 실행
     if _has_validate_intent(user_prompt):
@@ -537,6 +586,12 @@ def autopilot(user_prompt: str):
     if action == "github_action":
         target_url = decision.get("url") or _extract_first_url(user_prompt)
         result = trigger_content_crawler_workflow(target_url or "")
+        print(result)
+        return
+
+    if action == "github_issue":
+        issue_prompt = decision.get("keyword") or user_prompt
+        result = create_github_issue_from_feedback(issue_prompt)
         print(result)
         return
     

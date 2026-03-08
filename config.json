@@ -104,6 +104,11 @@
       "repo": "boyinblue/myAgent",
       "workflow_file": "run_crowler.yml",
       "ref": "main"
+    },
+    "github_issue": {
+      "labels": ["chatbot", "feedback"],
+      "check_duplicates": true,
+      "similarity_threshold": 0.6
     }
   },
   "ollama": {
