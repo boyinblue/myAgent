@@ -7,9 +7,6 @@ on:
         description: '추가할 콘텐츠 URL'
         required: true
         default: ''
-      title:
-        description: '콘텐츠 제목 (선택)'
-        required: false
 
 jobs:
   archive:
@@ -25,17 +22,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r content-crawler/requirements.txt
 
       - name: Run Archive Manager
         run: |
-          # 아까 만든 main 함수를 호출합니다.
-          python archive_manager.py --url "${{ github.event.inputs.url }}" --title "${{ github.event.inputs.title }}"
+          # URL만 전달하면 플랫폼을 자동 판별해 제목/메타를 추출합니다.
+          python content-crawler/main.py --url "${{ github.event.inputs.url }}"
 
       - name: Commit and Push DB changes
+        working-directory: .
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add archive_index.db
+          git add archive/archive_index.db
           git commit -m "chore: update archive index DB [skip ci]" || echo "No changes to commit"
           git push

@@ -85,5 +85,17 @@
   "output_directory": "./storage",
   "archive_root": "../archive",
   "raw_directory": "./raw",  
+  "autopilot": {
+    "provider": "ollama",
+    "models": {
+      "ollama": "gemma2:9b",
+      "gemini": "gemini-1.5-flash"
+    },
+    "github_dispatch": {
+      "repo": "boyinblue/myAgent",
+      "workflow_file": "run_crowler.yml",
+      "ref": "main"
+    }
+  },
   "log_level": "INFO"
 }

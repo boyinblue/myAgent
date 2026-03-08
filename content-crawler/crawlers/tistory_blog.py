@@ -61,8 +61,6 @@ class TistoryBlogCrawler:
     def parse_url(self, url):
         """단일 URL을 파싱하여 포스트 정보를 리턴합니다."""
 
-        archive_mgr = ArchiveManager(archive_root)
-
         print(f"[*] {url}에서 포스트 정보 추출 중...")
 
         try:

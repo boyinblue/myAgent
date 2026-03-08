@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import argparse
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from typing import List, Dict
 
@@ -54,6 +55,113 @@ def save_metadata(posts, output_file):
 
     print(f"[+] 메타데이터 저장: {output_file} ({len(posts)}개)")
 
+
+def parse_url(url: str, archive_mgr=None):
+    """URL에서 플랫폼을 판별해 단건 포스트를 추출합니다.
+
+    Returns:
+        {
+            "post": Dict,
+            "platform_type": str,
+            "media_name": str,
+        } 또는 None
+    """
+
+    parsed = urlparse(url)
+    host = (parsed.netloc or "").lower()
+
+    def _safe_title_from_page(target_url: str) -> str:
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+
+            resp = requests.get(target_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            og_title = soup.find("meta", attrs={"property": "og:title"})
+            if og_title and og_title.get("content"):
+                return og_title.get("content").strip()
+
+            if soup.title and soup.title.string:
+                return soup.title.string.strip()
+        except Exception:
+            pass
+        return "제목 없음"
+
+    if "blog.naver.com" in host or "m.blog.naver.com" in host:
+        parts = [p for p in parsed.path.split("/") if p]
+        blog_id = parts[0] if parts else "unknown"
+        crawler = NaverBlogCrawler(blog_id, archive_mgr=archive_mgr)
+        post = crawler.parse_url(url)
+        if not post:
+            return None
+        post.setdefault("published", "")
+        post.setdefault("summary", "")
+        post.setdefault("content", post.get("summary", ""))
+        return {"post": post, "platform_type": "NaverBlog", "media_name": blog_id}
+
+    if "tistory.com" in host:
+        base = f"{parsed.scheme}://{host}" if parsed.scheme else f"https://{host}"
+        blog_name = host.split(".")[0] if host else "unknown"
+        crawler = TistoryBlogCrawler(base, archive_mgr=archive_mgr)
+        post = crawler.parse_url(url)
+        if not post:
+            return None
+        post.setdefault("content", post.get("summary", ""))
+        return {"post": post, "platform_type": "Tistory", "media_name": blog_name}
+
+    if "youtube.com" in host or "youtu.be" in host:
+        title = "제목 없음"
+        author = "unknown"
+        try:
+            import requests
+
+            oembed = requests.get(
+                "https://www.youtube.com/oembed",
+                params={"url": url, "format": "json"},
+                timeout=10,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            oembed.raise_for_status()
+            data = oembed.json()
+            title = data.get("title", title)
+            author = data.get("author_name", author)
+        except Exception:
+            pass
+
+        post = {
+            "title": title,
+            "published": "",
+            "link": url,
+            "summary": "",
+            "content": "",
+        }
+        return {"post": post, "platform_type": "YouTube", "media_name": author}
+
+    if "github.io" in host:
+        title = _safe_title_from_page(url)
+        media_name = host.split(".")[0] if host else "unknown"
+        post = {
+            "title": title,
+            "published": "",
+            "link": url,
+            "summary": "",
+            "content": "",
+        }
+        return {"post": post, "platform_type": "GitHubPages", "media_name": media_name}
+
+    # 기타 일반 URL
+    title = _safe_title_from_page(url)
+    media_name = host or "unknown"
+    post = {
+        "title": title,
+        "published": "",
+        "link": url,
+        "summary": "",
+        "content": "",
+    }
+    return {"post": post, "platform_type": "Unknown", "media_name": media_name}
 
 def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: str = None):
     """포스트를 아카이브에 저장합니다.
@@ -403,6 +511,12 @@ def main():
         action="append",
         help="추가로 수동 크롤링할 네이버 블로그 ID를 지정 (여러 개 반복 가능)",
     )
+    parser.add_argument(
+        "--url",
+        type=str,
+        default=None,
+        help="단건 URL만 아카이브 처리 (플랫폼 자동 판별)",
+    )
 
     args = parser.parse_args()
 
@@ -425,13 +539,44 @@ def main():
     raw_dir = config.get("raw_directory", ".raw")
     archive_mgr = ArchiveManager(archive_root)  # 아카이브 매니저 인스턴스 생성
 
+    # 단건 URL 모드
+    if args.url:
+        print(f"[*] 단건 URL 처리 모드: {args.url}")
+        result = parse_url(args.url, archive_mgr=archive_mgr)
+        if not result:
+            print("[!] URL 처리 실패")
+            return
+
+        post = result["post"]
+        platform_type = result["platform_type"]
+        media_name = result["media_name"]
+        archive_posts([post], archive_mgr, platform_type=platform_type, media_name=media_name, raw_dir=raw_dir)
+        print(f"[+] 단건 URL 아카이브 완료: {post.get('title', '제목 없음')}")
+        return
+
     # 스케줄러 모드
     if args.schedule:
+        # 스케쥴러 시작, 만약 즉시 실행을 원할 경우 run_anniversary_digest.py를 별도로 실행
+        print("[*] 스케줄러 모드로 실행합니다. 일일 다이제스트가 설정된 시간에 자동으로 발송됩니다.")
+        print("[*] 즉시 다이제스트를 발송하려면 run_anniversary_digest.py 스크립트를 별도로 실행하세요.")
+
         notifier = TelegramNotifier()
-        scheduler_config = config.get("scheduler", {})
+        scheduler_config = config.get("scheduler", {}).copy()
+        scheduler_config["archive_root"] = archive_root
         scheduler = DailyDigestScheduler(scheduler_config, notifier)
         scheduler.start()
         return
+
+    # Archive Manager에서 "title", "platform", "media_name"이 하나라도 누락된 레코드가 있으면 다시 크롤링
+    print(f"[*] 아카이브 무결성 검사 중...")
+    incomplete_posts = archive_mgr.get_incomplete_posts()
+    if incomplete_posts:
+        print(f"[!] 아카이브에 누락된 정보가 있는 레코드가 {len(incomplete_posts)}개 발견되었습니다. 다시 크롤링을 시도합니다.")
+        for post in incomplete_posts:
+            post = dict(post)  # sqlite3.Row 객체를 일반 딕셔너리로 변환
+            print(f"  - URL: {post.get('url')}, Title: {post.get('title')}, Platform: {post.get('platform')}, Media: {post.get('media_name')}")
+            parse_url(post.get("url"), archive_mgr=archive_mgr)
+
 
     # 크롤링 모드
     print("[*] 크롤링 시작...")
@@ -488,4 +633,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[!] 예기치 않은 오류 발생: {e}")

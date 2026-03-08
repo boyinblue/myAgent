@@ -167,6 +167,8 @@ class NaverBlogCrawler:
             post = {
                 "title": title,
                 "link": url,
+                "platform": "NaverBlog",
+                "media_name": self.blog_id,
                 "resolved_url": normalized_url,
                 "links": links,  # 추출된 링크들 추가
                 "saved_file": saved_filepath,
@@ -175,14 +177,23 @@ class NaverBlogCrawler:
             # archive_mgr이 있으면 URL로 찾은 포스트의 title을 업데이트
             if self.archive_mgr is not None:
                 try:
-                    post_id = self.archive_mgr.get_post_id_by_url(url)
+                    # 정규화된 URL(모바일) 우선으로 시도, 없으면 원본 URL로 시도
+                    post_id = self.archive_mgr.get_post_id_by_url(normalized_url)
+                    lookup_url = normalized_url
+                    
+                    if not post_id and normalized_url != url:
+                        post_id = self.archive_mgr.get_post_id_by_url(url)
+                        lookup_url = url
+                    
                     if post_id:
                         self.archive_mgr.update_post_metadata(post_id, title=title)
-                        print(f"[+] 아카이브 업데이트(제목): ID={post_id}, title={title}")
+                        print(f"[+] 아카이브 업데이트(제목): ID={post_id}, title={title}, lookup_url={lookup_url}, platform={post['platform']}, media_name={post['media_name']}")
                     else:
                         print(f"[i] URL에 해당하는 포스트가 아카이브에 없습니다: {url}")
                 except Exception as e:
                     print(f"[!] 아카이브 업데이트 실패: {e}")
+            else:
+                print(f"[!] 아카이브 관리자 인스턴스가 제공되지 않았습니다. 메타데이터 업데이트를 건너뜁니다.")
 
             return post
 

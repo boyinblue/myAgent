@@ -3,7 +3,7 @@
 """일일 다이제스트 스케줄러 및 anniversary 기능"""
 
 import os
-import json
+import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import schedule
@@ -19,7 +19,7 @@ class AnniversaryFinder:
             archive_root: 아카이브 루트 디렉토리
         """
         self.archive_root = archive_root
-        self.index_file = os.path.join(archive_root, "index.json")
+        self.db_file = os.path.join(archive_root, "archive_index.db")
 
     def find_anniversary_posts(self, years_back: List[int] = None) -> List[Dict]:
         """
@@ -34,21 +34,39 @@ class AnniversaryFinder:
         if years_back is None:
             years_back = [1, 7, 30, 365]
 
-        if not os.path.exists(self.index_file):
-            print(f"[!] 인덱스 파일이 없습니다: {self.index_file}")
+        if not os.path.exists(self.db_file):
+            print(f"[!] DB 파일이 없습니다: {self.db_file}")
             return []
 
-        with open(self.index_file, "r", encoding="utf-8") as f:
-            index = json.load(f)
+        try:
+            conn = sqlite3.connect(self.db_file)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT title, url, created_at
+                FROM achieves
+                WHERE created_at IS NOT NULL
+                  AND created_at != ''
+                """
+            )
+            posts = [dict(row) for row in cur.fetchall()]
+        except sqlite3.Error as exc:
+            print(f"[!] DB 조회 실패: {exc}")
+            return []
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
-        posts = index.get("posts", [])
         anniversary_posts: List[Dict] = []
 
         today = datetime.now()
         today_month_day = f"{today.month:02d}-{today.day:02d}"
 
         for post in posts:
-            published = post.get("published", "")
+            published = post.get("created_at", "")
             if not published:
                 continue
 
@@ -65,8 +83,14 @@ class AnniversaryFinder:
                 if pub_month_day == today_month_day:
                     years_diff = today.year - pub_date.year
                     if years_diff in years_back:
-                        post["years_ago"] = years_diff
-                        anniversary_posts.append(post)
+                        anniversary_posts.append(
+                            {
+                                "title": post.get("title", "제목 없음"),
+                                "link": post.get("url", ""),
+                                "published": pub_date.strftime("%Y-%m-%d"),
+                                "years_ago": years_diff,
+                            }
+                        )
 
             except (ValueError, IndexError):
                 continue
@@ -88,7 +112,7 @@ class AnniversaryFinder:
         for post in posts:
             years_ago = post.get("years_ago", "?")
             title = post.get("title", "제목 없음")
-            link = post.get("link", "")
+            link = post.get("link", "") or post.get("url", "")
             date = post.get("published", "").split("T")[0] if post.get("published") else ""
 
             msg = f"<b>{years_ago}년 전 오늘</b> ({date})\n{title}"
