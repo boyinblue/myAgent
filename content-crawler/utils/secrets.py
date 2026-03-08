@@ -30,13 +30,13 @@ def _load_env_file_fallback(env_file):
 
 
 def load_environment():
-    """환경 변수를 로드합니다 (.env 파일에서)."""
+    """환경 변수를 로드합니다 (.env 파일에서, 또는 환경변수 직접 사용)."""
     env_file = Path(__file__).parent.parent / ".env"
     
     if not env_file.exists():
-        print(f"[!] .env 파일을 찾을 수 없습니다: {env_file}")
-        print(f"[i] .env.example을 복사하여 .env를 만드세요.")
-        return False
+        # .env 파일이 없으면 환경변수만 사용 (GitHub Actions 등)
+        # print(f"[i] .env 파일 없음, 환경변수 사용: {env_file}")
+        return True
     
     try:
         if HAS_DOTENV and load_dotenv:

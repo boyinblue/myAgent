@@ -34,6 +34,11 @@ CRAWLER_VERSION = "2.2"
 
 def load_config(config_file="config.json"):
     """설정 파일을 로드합니다."""
+    # 상대경로면 스크립트 위치 기준으로 해석
+    if not os.path.isabs(config_file):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        config_file = os.path.join(script_dir, config_file)
+    
     if not os.path.exists(config_file):
         print(f"[!] 설정 파일을 찾을 수 없습니다: {config_file}")
         return None

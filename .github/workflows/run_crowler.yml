@@ -1,5 +1,8 @@
 name: Manual Content Archive
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -26,6 +29,12 @@ jobs:
           pip install -r content-crawler/requirements.txt
 
       - name: Run Archive Manager
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
           # URL만 전달하면 플랫폼을 자동 판별해 제목/메타를 추출합니다.
           python content-crawler/main.py --url "${{ github.event.inputs.url }}"
@@ -35,6 +44,12 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- archive/archive_index.db; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
           git add archive/archive_index.db
-          git commit -m "chore: update archive index DB [skip ci]" || echo "No changes to commit"
+          git commit -m "chore: update archive index DB [skip ci]"
           git push
