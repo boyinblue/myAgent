@@ -288,16 +288,33 @@ def _has_validate_intent(text: str) -> bool:
 
 def _has_dashboard_launch_intent(text: str) -> bool:
     lower = (text or "").lower()
-    dashboard_keywords = ["대시보드", "웹", "dashboard", "web"]
-    action_keywords = ["시작", "실행", "열기", "launch", "start", "open"]
-    return any(d in lower for d in dashboard_keywords) and any(a in lower for a in action_keywords)
+    # 웹 대시보드 실행 관련 키워드
+    keywords = [
+        "웹페이지", "웹 페이지", "대시보드", "웹 대시보드",
+        "web dashboard", "web page", "dashboard", "webpage"
+    ]
+    actions = ["보여", "보여줘", "열", "열어", "열어줘", "시작", "실행"]
+    
+    # 웹/페이지 또는 대시보드 키워드 확인
+    has_webpage = any(k in lower for k in keywords)
+    has_action = "웹" in lower or "페이지" in lower or "대시보드" in lower or any(a in lower for a in actions)
+    
+    return has_webpage or has_action
 
 
 def _has_dashboard_stop_intent(text: str) -> bool:
     lower = (text or "").lower()
-    dashboard_keywords = ["대시보드", "웹", "dashboard", "web"]
-    action_keywords = ["종료", "중지", "닫기", "stop", "close", "shutdown"]
-    return any(d in lower for d in dashboard_keywords) and any(a in lower for a in action_keywords)
+    # 웹 대시보드 종료 관련 키워드
+    keywords = [
+        "웹페이지", "웹 페이지", "대시보드", "웹 대시보드",
+        "web dashboard", "web page", "dashboard", "webpage"
+    ]
+    actions = ["종료", "중지", "닫", "닫아", "stop", "close", "shutdown"]
+    
+    has_webpage = any(k in lower for k in keywords)
+    has_action = any(a in lower for a in actions)
+    
+    return has_webpage and has_action
 
 
 def _extract_search_keyword(text: str) -> str:
