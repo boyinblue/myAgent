@@ -80,8 +80,40 @@ class ArchiveManager:
         ''')
         self.conn.commit()
 
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        """
+        URL을 정규화합니다 (중복 체크용).
+        
+        - m.blog.naver.com → blog.naver.com
+        - 쿼리 파라미터 제거 (?fromRss=true 등)
+        - 마지막 슬래시 제거
+        
+        Args:
+            url: 원본 URL
+            
+        Returns:
+            정규화된 URL
+        """
+        if not url:
+            return url
+        
+        # 모바일 URL → 데스크톱 URL
+        url = url.replace("://m.blog.naver.com", "://blog.naver.com")
+        
+        # 쿼리 파라미터 제거
+        if "?" in url:
+            url = url.split("?")[0]
+        
+        # 마지막 슬래시 제거
+        if url.endswith("/"):
+            url = url.rstrip("/")
+        
+        return url
+
     def upsert_by_url(self, url: str, title: str = "제목 없음", platform: str = "Unknown"):
         """URL을 기준으로 DB에 데이터를 추가하거나 업데이트합니다."""
+        url = self._normalize_url(url)
         sql = '''
             INSERT INTO posts (url, title, platform, db_updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -151,6 +183,9 @@ class ArchiveManager:
         Returns:
             True if URL is already archived, False otherwise
         """
+        # URL 정규화 (m.blog.naver.com → blog.naver.com, 쿼리 제거)
+        url = self._normalize_url(url)
+        
         sql = "SELECT title, platform, media_name FROM posts WHERE url = ? LIMIT 1"
         self.cur.execute(sql, (url,))
 
@@ -165,28 +200,16 @@ class ArchiveManager:
         return False
 
     def get_post_id_by_url(self, url: str):
-        """URL로 post_id를 찾습니다. 블로그/모바일 양쪽 형태 시도."""
+        """URL로 post_id를 찾습니다."""
+        # URL 정규화 (m.blog.naver.com → blog.naver.com, 쿼리 제거)
+        url = self._normalize_url(url)
+        
         sql = "SELECT id FROM posts WHERE url = ? LIMIT 1"
         try:
-            # 1. 정확한 URL로 먼저 시도
             self.cur.execute(sql, (url,))
             record = self.cur.fetchone()
             if record:
                 return record[0]
-            
-            # 2. 네이버 블로그인 경우 모바일/일반 형태 양쪽 시도
-            if "blog.naver.com" in url:
-                if "m.blog.naver.com" in url:
-                    # 모바일 형태 → 일반 형태로 변환
-                    alt_url = url.replace("m.blog.naver.com", "blog.naver.com")
-                else:
-                    # 일반 형태 → 모바일 형태로 변환
-                    alt_url = url.replace("blog.naver.com", "m.blog.naver.com")
-                
-                self.cur.execute(sql, (alt_url,))
-                record = self.cur.fetchone()
-                if record:
-                    return record[0]
         except sqlite3.Error as e:
             print(f"❌ DB 조회 에러: {e}")
         return None
@@ -380,9 +403,8 @@ class ArchiveManager:
         filename = self.generate_filename(year, month, day, platform_type, media_name, title)
         filepath = os.path.join(archive_path, filename)
 
-        # URL
-        if url and url.startswith("http://blog.naver.com") and "?" in url:
-            url = url.split("?")[0]
+        # URL 정규화 (m.blog.naver.com → blog.naver.com, 쿼리 제거)
+        url = self._normalize_url(url)
 
         # Frontmatter 생성 / 기존 파일이 있으면 병합
         frontmatter = {
