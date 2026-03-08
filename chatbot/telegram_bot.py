@@ -4,6 +4,8 @@ import logging
 import sys
 import json
 import tempfile
+import atexit
+import ctypes
 from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import redirect_stdout
@@ -60,6 +62,114 @@ def _resolve_chatbot_log_file() -> Path:
 
 CHATBOT_LOG_FILE = _resolve_chatbot_log_file()
 print(f"[*] Chatbot runtime log file: {CHATBOT_LOG_FILE}")
+BOT_LOCK_FILE = CHATBOT_LOG_FILE.with_name("telegram_bot.lock")
+_WINDOWS_MUTEX_HANDLE = None
+_WINDOWS_MUTEX_NAME = "Global\\myAgent_telegram_bot_singleton"
+
+
+def _is_pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+
+    # Windows에서는 os.kill(pid, 0)가 신뢰되지 않는 경우가 있어 tasklist 우선 사용
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+            output = (result.stdout or "").strip()
+            if not output or "No tasks are running" in output:
+                return False
+            return str(pid) in output
+        except Exception:
+            return False
+
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _acquire_single_instance_lock(lock_path: Path) -> bool:
+    current_pid = os.getpid()
+
+    # 1) Windows 전용 전역 mutex (가장 우선, 가장 신뢰성 높음)
+    if os.name == "nt":
+        global _WINDOWS_MUTEX_HANDLE
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, _WINDOWS_MUTEX_NAME)
+        if not handle:
+            print("[!] Windows mutex 생성 실패")
+            return False
+        # ERROR_ALREADY_EXISTS = 183
+        if kernel32.GetLastError() == 183:
+            print("[!] 이미 텔레그램 봇이 실행 중입니다. (Windows mutex)")
+            return False
+        _WINDOWS_MUTEX_HANDLE = handle
+
+    # 2) 보조 파일 락 (진단/가시성 목적)
+    def _try_create_lock() -> bool:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(str(current_pid))
+            return True
+        except FileExistsError:
+            return False
+
+    if _try_create_lock():
+        return True
+
+    existing_pid = 0
+    try:
+        existing_pid_raw = lock_path.read_text(encoding="utf-8").strip()
+        existing_pid = int(existing_pid_raw)
+    except Exception:
+        existing_pid = 0
+
+    if existing_pid and existing_pid != current_pid and _is_pid_alive(existing_pid):
+        print(f"[!] 이미 텔레그램 봇이 실행 중입니다. (PID: {existing_pid})")
+        print(f"[!] 중복 실행을 방지하기 위해 종료합니다. 락 파일: {lock_path}")
+        return False
+
+    try:
+        lock_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    if _try_create_lock():
+        return True
+
+    print(f"[!] 락 파일 획득 실패: {lock_path}")
+    return False
+
+
+def _release_single_instance_lock(lock_path: Path) -> None:
+    # 파일 락 해제
+    try:
+        if lock_path.exists():
+            lock_pid_raw = lock_path.read_text(encoding="utf-8").strip()
+            lock_pid = int(lock_pid_raw) if lock_pid_raw.isdigit() else -1
+            if lock_pid == os.getpid():
+                lock_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    # Windows mutex 해제
+    if os.name == "nt":
+        global _WINDOWS_MUTEX_HANDLE
+        try:
+            if _WINDOWS_MUTEX_HANDLE:
+                ctypes.windll.kernel32.ReleaseMutex(_WINDOWS_MUTEX_HANDLE)
+                ctypes.windll.kernel32.CloseHandle(_WINDOWS_MUTEX_HANDLE)
+                _WINDOWS_MUTEX_HANDLE = None
+        except Exception:
+            pass
 
 
 def _append_chatbot_log(event: str, chat_id: int, user_text: str = "", bot_output: str = "", error: str = "") -> None:
@@ -162,7 +272,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.close()
 
 if __name__ == '__main__':
+    if not _acquire_single_instance_lock(BOT_LOCK_FILE):
+        _append_chatbot_log(event="startup_blocked", chat_id=CHAT_ID, error="duplicate_instance")
+        sys.exit(1)
+
+    atexit.register(_release_single_instance_lock, BOT_LOCK_FILE)
+
     if not validate_runtime_config():
+        _release_single_instance_lock(BOT_LOCK_FILE)
         sys.exit(1)
 
     application = ApplicationBuilder().token(TOKEN).build()
@@ -172,4 +289,7 @@ if __name__ == '__main__':
     application.add_handler(echo_handler)
     
     print("[*] 텔레그램 봇이 가동되었습니다.")
-    application.run_polling()
+    try:
+        application.run_polling()
+    finally:
+        _release_single_instance_lock(BOT_LOCK_FILE)

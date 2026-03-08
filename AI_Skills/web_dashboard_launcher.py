@@ -18,23 +18,47 @@ web_dashboard_dir = project_root / "web-dashboard"
 
 def find_ngrok_exe():
     """ngrok 실행 파일 찾기"""
-    # 1. shutil.which로 PATH에서 찾기
+    # 1) PATH에서 검색
     ngrok_path = shutil.which('ngrok')
-    if ngrok_path:
+    if ngrok_path and Path(ngrok_path).exists():
         return ngrok_path
-    
-    # 2. 설치된 경로들에서 찾기 (Windows)
+
+    # 2) Windows where 명령 fallback
+    if os.name == 'nt':
+        try:
+            proc = subprocess.run(
+                ['where', 'ngrok'],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+            if proc.returncode == 0 and proc.stdout:
+                for line in proc.stdout.splitlines():
+                    candidate = line.strip()
+                    if candidate and Path(candidate).exists():
+                        return candidate
+        except Exception:
+            pass
+
+    # 3) 일반 설치 경로 검색 (환경변수 + 홈 디렉토리 기반)
+    home = Path.home()
     possible_paths = [
-        Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs' / 'ngrok' / 'ngrok.exe',
+        Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs' / 'ngrok' / ('ngrok.exe' if os.name == 'nt' else 'ngrok'),
+        home / 'AppData' / 'Local' / 'Programs' / 'ngrok' / 'ngrok.exe',
         Path(os.environ.get('ProgramFiles', 'C:\\Program Files')) / 'ngrok' / 'ngrok.exe',
         Path('C:\\Program Files (x86)') / 'ngrok' / 'ngrok.exe',
-        Path(os.environ.get('USERPROFILE', '')) / 'ngrok' / 'ngrok.exe',
+        Path(os.environ.get('USERPROFILE', str(home))) / 'ngrok' / ('ngrok.exe' if os.name == 'nt' else 'ngrok'),
+        home / 'ngrok' / ('ngrok.exe' if os.name == 'nt' else 'ngrok'),
     ]
-    
+
     for path in possible_paths:
-        if path.exists():
-            return str(path)
-    
+        try:
+            if path and path.exists() and path.is_file():
+                return str(path)
+        except Exception:
+            continue
+
     return None
 
 def launch_dashboard():
@@ -45,16 +69,41 @@ def launch_dashboard():
     if not ngrok_exe:
         return {
             'success': False,
-            'message': '❌ ngrok이 설치되어 있지 않습니다.\n\n설치: https://ngrok.com/download'
+            'message': '❌ <b>ngrok이 설치되어 있지 않습니다.</b>\n\n설치: https://ngrok.com/download'
         }
     
     # ngrok 정상 작동 확인
     try:
-        subprocess.run([ngrok_exe, 'version'], capture_output=True, check=True, timeout=5)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        result = subprocess.run([ngrok_exe, 'version'], capture_output=True, text=True, check=True, timeout=5)
+    except subprocess.CalledProcessError as e:
+        # ngrok 인증 오류인 경우
+        stderr = e.stderr if e.stderr else ""
+        stdout = e.stdout if e.stdout else ""
+        combined = f"{stderr} {stdout}"
+        
+        if 'authentication failed' in combined or 'authtoken' in combined:
+            return {
+                'success': False,
+                'message': '''❌ <b>ngrok 인증 오류</b>
+
+ngrok v3+ 에서는 계정 및 authtoken 이 필요합니다.
+
+<b>설정 방법:</b>
+1️⃣ https://ngrok.com/signup 에서 가입
+2️⃣ https://dashboard.ngrok.com/get-started/your-authtoken 에서 authtoken 복사  
+3️⃣ 터미널에서 실행:
+<code>ngrok config add-authtoken YOUR_AUTHTOKEN</code>
+
+설정 후 다시 시도해주세요.'''
+            }
         return {
             'success': False,
-            'message': f'❌ ngrok 실행 오류: {e}\n\n설치를 다시 확인해주세요.'
+            'message': f'❌ ngrok 실행 오류\n\n설치를 다시 확인해주세요.\n오류: {e}'
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            'success': False,
+            'message': '❌ ngrok 타임아웃 오류\n\n설치를 확인한 후 다시 시도해주세요.'
         }
     
     # 이미 실행 중인지 확인 (PID 파일)
@@ -81,10 +130,13 @@ def launch_dashboard():
             'message': '❌ start.py 파일을 찾을 수 없습니다.'
         }
     
+    # 프로젝트 루트에서 실행하도록 cwd 설정
+    project_root = web_dashboard_dir.parent
+    
     # 백그라운드 프로세스로 실행
     process = subprocess.Popen(
         [sys.executable, str(start_script)],
-        cwd=str(web_dashboard_dir),
+        cwd=str(project_root),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True  # 세션 분리

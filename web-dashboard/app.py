@@ -12,11 +12,16 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# content-crawler/utils에 접근하기 위해 경로 추가
+content_crawler = project_root / 'content-crawler'
+if str(content_crawler) not in sys.path:
+    sys.path.insert(0, str(content_crawler))
+
 from utils.secrets import load_environment
 load_environment()
 
 # ngrok_manager의 토큰 관리 함수 import
-import web_dashboard.ngrok_manager as ngrok_manager
+import ngrok_manager
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())

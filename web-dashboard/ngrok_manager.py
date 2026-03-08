@@ -14,6 +14,11 @@ import shutil
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# content-crawler/utils에 접근하기 위해 경로 추가
+content_crawler = project_root / 'content-crawler'
+if str(content_crawler) not in sys.path:
+    sys.path.insert(0, str(content_crawler))
+
 from utils.telegram_notifier import TelegramNotifier
 
 # 일회용 토큰 저장소 (메모리, ngrok_manager와 app.py가 공유)
@@ -77,24 +82,37 @@ class NgrokManager:
             self.process = subprocess.Popen(
                 [ngrok_exe, 'http', str(port)],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                text=True
             )
         except Exception as e:
             print(f"[!] ngrok 실행 실패: {e}")
             return None
         
-        # ngrok API가 준비될 때까지 대기
-        time.sleep(3)
-        
-        # ngrok URL 가져오기
-        self.public_url = self._get_public_url()
-        
-        if self.public_url:
-            print(f"[+] ngrok 터널 생성됨: {self.public_url}")
-            return self.public_url
-        else:
-            print("[!] ngrok URL을 가져올 수 없습니다.")
+        # 짧은 시간 대기 후 프로세스가 즉시 종료되었는지 확인 (=ngrok 오류)
+        time.sleep(0.5)
+        if self.process.poll() is not None:
+            # 프로세스가 종료됨 - 오류 메시지 읽기
+            _, stderr = self.process.communicate(timeout=2)
+            if 'authentication failed' in stderr or 'authtoken' in stderr:
+                print("[!] ngrok 인증 실패: authtoken이 설정되지 않았습니다.")
+                return None
+            print(f"[!] ngrok 프로세스 오류:\n{stderr}")
             return None
+        
+        # ngrok API가 준비될 때까지 재시도 (최대 10초)
+        max_retries = 10
+        for i in range(max_retries):
+            time.sleep(1)
+            self.public_url = self._get_public_url()
+            if self.public_url:
+                print(f"[+] ngrok 터널 생성됨: {self.public_url}")
+                return self.public_url
+            if i < max_retries - 1:
+                print(f"[*] ngrok API 재시도... ({i+1}/{max_retries})")
+        
+        print("[!] ngrok URL을 가져올 수 없습니다.")
+        return None
     
     def _get_public_url(self):
         """ngrok 로컬 API에서 public URL 가져오기"""
@@ -173,7 +191,7 @@ def main():
     import threading
     
     # app.py를 여기서 import (순환 참조 방지)
-    from web_dashboard import app as flask_app
+    import app as flask_app
     
     # Flask 앱을 별도 스레드에서 실행
     def run_flask():
@@ -206,6 +224,27 @@ def main():
             print("\n[*] 종료 신호 받음...")
             manager.stop_tunnel()
     else:
+        # ngrok 터널 실패 - 텔레그램으로 오류 메시지 전송
+        error_message = """❌ **웹 대시보드 실행 실패**
+
+ngrok 터널을 생성할 수 없습니다.
+
+**확인 사항:**
+1. ngrok이 설치되었는지 확인
+2. ngrok authtoken이 설정되었는지 확인:
+   <code>ngrok config add-authtoken YOUR_TOKEN</code>
+
+3. authtoken 발급: https://dashboard.ngrok.com/get-started/your-authtoken
+
+설정 후 다시 시도해주세요."""
+        
+        try:
+            manager.notifier.send_message(error_message)
+            print("[+] 오류 메시지를 텔레그램으로 전송했습니다.")
+        except Exception as e:
+            print(f"[!] 텔레그램 전송 실패: {e}")
+            print(f"[!] 오류 내용:\n{error_message}")
+        
         print("[!] ngrok 터널을 시작할 수 없습니다.")
 
 if __name__ == '__main__':
