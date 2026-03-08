@@ -31,26 +31,28 @@ def search_archive(keyword: str, limit: int = 10) -> str:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # 제목, 요약, 작성자에서 키워드 검색
+        # 제목, 키워드, 태그, 미디어명에서 검색
         query = """
         SELECT 
             title, 
-            author, 
+            media_name, 
             url, 
             published_date,
-            summary,
+            keywords,
+            tags,
             platform
-        FROM archive_index
+        FROM posts
         WHERE 
             title LIKE ? 
-            OR summary LIKE ? 
-            OR author LIKE ?
+            OR keywords LIKE ? 
+            OR tags LIKE ?
+            OR media_name LIKE ?
         ORDER BY published_date DESC
         LIMIT ?
         """
         
         search_pattern = f"%{keyword}%"
-        cursor.execute(query, (search_pattern, search_pattern, search_pattern, limit))
+        cursor.execute(query, (search_pattern, search_pattern, search_pattern, search_pattern, limit))
         
         rows = cursor.fetchall()
         conn.close()
@@ -62,20 +64,20 @@ def search_archive(keyword: str, limit: int = 10) -> str:
         
         for idx, row in enumerate(rows, 1):
             title = row["title"] or "제목 없음"
-            author = row["author"] or "작성자 미상"
+            media_name = row["media_name"] or "미디어 미상"
             url = row["url"] or ""
             published = row["published_date"] or "날짜 미상"
             platform = row["platform"] or "플랫폼 미상"
-            summary = (row["summary"] or "")[:100]  # 요약은 100자까지만
+            keywords = (row["keywords"] or "")[:100]  # 키워드는 100자까지만
             
             result_text = (
                 f"\n{idx}. {title}\n"
-                f"   📝 {author} | {platform}\n"
+                f"   📝 {media_name} | {platform}\n"
                 f"   📅 {published}\n"
             )
             
-            if summary:
-                result_text += f"   💬 {summary}...\n"
+            if keywords:
+                result_text += f"   🏷️ {keywords}\n"
             
             if url:
                 result_text += f"   🔗 {url}\n"
