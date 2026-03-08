@@ -9,6 +9,7 @@ import requests
 
 from github_dispatch import trigger_content_crawler_workflow
 from archive_search import search_archive
+from archive_validate import validate_archive
 from runtime_config import get_config_value
 from shared_credentials import get_shared_secret, load_shared_environment
 
@@ -137,7 +138,7 @@ def _normalize_router_decision(parsed: dict | None) -> dict:
     url = str(parsed.get("url", "")).strip()
     keyword = str(parsed.get("keyword", "")).strip()
 
-    if action not in {"chat", "python_code", "github_action", "archive_search"}:
+    if action not in {"chat", "python_code", "github_action", "archive_search", "archive_validate"}:
         return {"action": "chat", "skill": "fallback_chat", "reason": "router_invalid_action"}
 
     normalized = {"action": action, "skill": skill, "reason": reason}
@@ -187,6 +188,20 @@ def _has_search_intent(text: str) -> bool:
         "find",
     ]
     return any(k in lower for k in keywords)
+
+
+def _has_validate_intent(text: str) -> bool:
+    lower = (text or "").lower()
+    keywords = [
+        "무결성",
+        "검증",
+        "누락",
+        "불완전",
+        "validate",
+        "integrity",
+        "check",
+    ]
+    return any(k in lower for k in keywords) and ("아카이브" in lower or "archive" in lower or "db" in lower.replace("database", "db"))
 
 
 def _extract_search_keyword(text: str) -> str:
@@ -284,6 +299,12 @@ def autopilot(user_prompt: str):
         else:
             print("❌ 검색할 키워드를 입력해주세요.")
         return
+    
+    # 무결성 검증 의도 감지 시 즉시 실행
+    if _has_validate_intent(user_prompt):
+        result = validate_archive()
+        print(result)
+        return
 
     try:
         decision = decide_action(user_prompt, skills_md)
@@ -327,6 +348,11 @@ def autopilot(user_prompt: str):
             print(result)
         else:
             print("❌ 검색할 키워드를 입력해주세요.")
+        return
+    
+    if action == "archive_validate":
+        result = validate_archive()
+        print(result)
         return
 
     try:

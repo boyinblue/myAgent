@@ -4,16 +4,12 @@
 
 ## Output Contract
 - 라우터 판단 결과는 JSON으로만 반환
-- 스키마: `{"action":"chat|python_code|github_action|archive_search","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}`
+- 스키마: `{"action":"chat|python_code|github_action|archive_search|archive_validate","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}`
 
-## Routing Priority (중요)
-1. **Heuristic First (LLM 우회)**
-  - 입력에 URL이 있고, 아카이브 의도가 명확하면 라우터 파싱 결과와 무관하게 `content_crawler_dispatch`를 즉시 실행
-  - 목적: `router_parse_failed` 발생 시에도 URL 아카이브 요청을 안정적으로 처리
-2. **LLM Router Second**
-  - Heuristic 조건이 아니면 LLM 라우터 JSON을 사용
-3. **Fallback**
-  - 파싱 실패/스키마 오류 시 `safety_fallback`으로 처리
+## Performance Optimization
+- **Heuristic First**: URL+아카이브, 검색, 무결성 검증 등 명확한 의도는 LLM 우회하여 즉시 실행
+- **LLM Router Second**: 애매한 요청만 LLM 라우터 사용
+- **Benefit**: 응답 속도 향상, 토큰 비용 절감
 
 ## Skills
 
