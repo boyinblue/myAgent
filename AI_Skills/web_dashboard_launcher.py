@@ -113,21 +113,24 @@ ngrok v3+ 에서는 계정 및 authtoken 이 필요합니다.
             pid = int(pid_file.read_text().strip())
             # 프로세스가 실행 중인지 확인
             os.kill(pid, 0)
-            return {
-                'success': False,
-                'message': '⚠️ 웹 대시보드가 이미 실행 중입니다.\n종료하려면: stop_dashboard 명령을 사용하세요.'
-            }
+            # 실행 중이면 재시작하여 URL을 다시 전송
+            stop_result = stop_dashboard()
+            if not stop_result.get('success'):
+                return {
+                    'success': False,
+                    'message': '⚠️ 기존 대시보드 종료에 실패했습니다. 잠시 후 다시 시도해주세요.'
+                }
         except (OSError, ValueError):
             # 프로세스가 없으면 PID 파일 삭제
             pid_file.unlink()
     
-    # 백그라운드에서 대시보드 실행
-    start_script = web_dashboard_dir / 'start.py'
+    # 백그라운드에서 원격(텔레그램) 대시보드 실행
+    start_script = web_dashboard_dir / 'start_remote.py'
     
     if not start_script.exists():
         return {
             'success': False,
-            'message': '❌ start.py 파일을 찾을 수 없습니다.'
+            'message': '❌ start_remote.py 파일을 찾을 수 없습니다.'
         }
     
     # 프로젝트 루트에서 실행하도록 cwd 설정
@@ -139,8 +142,20 @@ ngrok v3+ 에서는 계정 및 authtoken 이 필요합니다.
         cwd=str(project_root),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        text=True,
         start_new_session=True  # 세션 분리
     )
+
+    # 초기 부팅 실패(포트 충돌/ngrok 오류 등) 조기 감지
+    import time
+    time.sleep(2)
+    if process.poll() is not None:
+        stdout, stderr = process.communicate(timeout=2)
+        error_text = (stderr or stdout or 'unknown error').strip()
+        return {
+            'success': False,
+            'message': f'❌ 웹 대시보드 시작 실패\n\n{error_text[:500]}'
+        }
     
     # PID 저장
     pid_file.write_text(str(process.pid))
@@ -151,6 +166,8 @@ ngrok v3+ 에서는 계정 및 authtoken 이 필요합니다.
 
 ⏳ 약 5초 후 접속 URL이 전송됩니다.
 📱 텔레그램에서 URL을 받으면 클릭하세요.
+
+ℹ️ 로컬 대시보드와 분리된 원격 모드로 실행됩니다.
 
 ℹ️ 백그라운드에서 실행 중입니다 (PID: {process.pid})
 🛑 종료하려면: stop_dashboard 명령 사용'''

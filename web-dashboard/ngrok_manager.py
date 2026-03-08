@@ -10,6 +10,7 @@ import secrets
 from pathlib import Path
 from datetime import datetime, timedelta
 import shutil
+import signal
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -63,6 +64,16 @@ class NgrokManager:
         self.process = None
         self.public_url = None
         self.notifier = TelegramNotifier()
+
+    def _cleanup_stale_ngrok(self):
+        """이전 ngrok 잔여 프로세스 정리"""
+        try:
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/F', '/IM', 'ngrok.exe'], check=False, capture_output=True)
+            else:
+                subprocess.run(['pkill', '-f', 'ngrok'], check=False, capture_output=True)
+        except Exception:
+            pass
     
     def start_tunnel(self, port=5000):
         """ngrok 터널 시작"""
@@ -76,6 +87,9 @@ class NgrokManager:
             return None
         
         print(f"[*] ngrok 경로: {ngrok_exe}")
+
+        # 이전 ngrok 프로세스가 남아있으면 정리
+        self._cleanup_stale_ngrok()
         
         # ngrok 프로세스 시작
         try:
@@ -189,13 +203,14 @@ class NgrokManager:
 def main():
     """메인 함수 - Flask 앱과 ngrok 동시 실행"""
     import threading
+    remote_port = int(os.getenv('DASHBOARD_REMOTE_PORT', '5001'))
     
     # app.py를 여기서 import (순환 참조 방지)
     import app as flask_app
     
     # Flask 앱을 별도 스레드에서 실행
     def run_flask():
-        flask_app.app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        flask_app.app.run(host='0.0.0.0', port=remote_port, debug=False, use_reloader=False)
     
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
@@ -205,7 +220,7 @@ def main():
     
     # ngrok 터널 시작
     manager = NgrokManager()
-    url = manager.start_tunnel(port=5000)
+    url = manager.start_tunnel(port=remote_port)
     
     if url:
         # 텔레그램으로 접속 URL 전송

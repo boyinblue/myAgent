@@ -26,6 +26,14 @@ import ngrok_manager
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
 
+
+def is_local_mode() -> bool:
+    return (os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() == '1')
+
+
+def is_authenticated() -> bool:
+    return is_local_mode() or bool(session.get('authenticated'))
+
 def validate_token(token):
     """토큰 유효성 검증"""
     if token not in ngrok_manager.active_tokens:
@@ -48,7 +56,7 @@ def validate_token(token):
 
 def get_db_connection():
     """아카이브 DB 연결"""
-    db_path = project_root / 'content-crawler' / 'archive_index.db'
+    db_path = project_root / 'archive' / 'archive_index.db'
     if not db_path.exists():
         return None
     conn = sqlite3.connect(db_path)
@@ -58,6 +66,10 @@ def get_db_connection():
 @app.route('/')
 def index():
     """접속 토큰 검증"""
+    if is_local_mode():
+        session['authenticated'] = True
+        return redirect(url_for('dashboard'))
+
     token = request.args.get('token')
     
     if not token:
@@ -75,7 +87,7 @@ def index():
 @app.route('/dashboard')
 def dashboard():
     """메인 대시보드"""
-    if not session.get('authenticated'):
+    if not is_authenticated():
         return redirect(url_for('index'))
     
     return render_template('dashboard.html')
@@ -83,7 +95,7 @@ def dashboard():
 @app.route('/api/stats')
 def api_stats():
     """통계 데이터 API"""
-    if not session.get('authenticated'):
+    if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
     
     conn = get_db_connection()
@@ -120,7 +132,7 @@ def api_stats():
 @app.route('/api/posts')
 def api_posts():
     """포스트 목록 API"""
-    if not session.get('authenticated'):
+    if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
     
     page = int(request.args.get('page', 1))
@@ -138,8 +150,8 @@ def api_posts():
         params = []
         
         if search:
-            where_clauses.append('(title LIKE ? OR summary LIKE ?)')
-            params.extend([f'%{search}%', f'%{search}%'])
+            where_clauses.append('(title LIKE ? OR keywords LIKE ? OR tags LIKE ?)')
+            params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
         
         if platform:
             where_clauses.append('platform = ?')
@@ -154,7 +166,7 @@ def api_posts():
         # 페이징된 결과
         offset = (page - 1) * per_page
         posts_sql = f'''
-            SELECT id, title, url, platform, media_name, published_date, created_at, summary
+            SELECT id, title, url, platform, media_name, published_date, created_at, keywords, tags
             FROM posts 
             WHERE {where_sql}
             ORDER BY published_date DESC, created_at DESC
@@ -175,7 +187,7 @@ def api_posts():
 @app.route('/api/trigger-crawl', methods=['POST'])
 def api_trigger_crawl():
     """크롤링 트리거 (GitHub Actions 워크플로 디스패치)"""
-    if not session.get('authenticated'):
+    if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
     
     # GitHub Actions workflow_dispatch 트리거
