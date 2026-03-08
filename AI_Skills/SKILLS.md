@@ -4,7 +4,7 @@
 
 ## Output Contract
 - 라우터 판단 결과는 JSON으로만 반환
-- 스키마: `{"action":"chat|python_code|github_action","skill":"skill_name","reason":"short reason","url":"optional_target_url"}`
+- 스키마: `{"action":"chat|python_code|github_action|archive_search","skill":"skill_name","reason":"short reason","url":"optional_target_url","keyword":"optional_search_keyword"}`
 
 ## Routing Priority (중요)
 1. **Heuristic First (LLM 우회)**
@@ -63,6 +63,26 @@
 - **선택 환경변수**:
   - `GITHUB_WORKFLOW_FILE` (기본 `run_crowler.yml`)
   - `GITHUB_REF_NAME` (기본 `main`)
+
+### 5) `archive_search`
+- **action**: `archive_search`
+- **사용 조건**:
+  - 사용자가 아카이브에서 콘텐츠 검색을 요청
+  - "검색", "찾아줘", "찾기", "search", "find" 등의 키워드 포함
+- *파이썬 검색해줘"
+  - 기대 동작: `archive_search` with keyword="파이썬"
+- "아카이브에서 딥러닝 찾아줘"
+  - 기대 동작: `archive_search` with keyword="딥러닝"
+- "*Heuristic 우회 조건**:
+  - 입력 텍스트에 검색 의도 키워드 포함 시 즉시 실행
+- **실행 규칙**:
+  - 입력 텍스트에서 검색 키워드를 추출하거나 JSON의 `keyword` 필드를 사용
+  - SQLite DB (`archive/archive_index.db`)에서 제목, 요약, 작성자 검색
+  - 최대 10건 반환
+  - 결과: 제목, 작성자, 플랫폼, 날짜, 요약, URL
+- **예시**:
+  - "파이썬 검색해줘" → `archive_search` with keyword="파이썬"
+  - "아카이브에서 딥러닝 찾아줘" → `archive_search` with keyword="딥러닝"
 
 ## Prompt Examples
 - "아카이브에 추가해줘 https://blog.naver.com/xxx/123"

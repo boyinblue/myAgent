@@ -4,7 +4,7 @@ from typing import Any
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_CONFIG_PATH = _PROJECT_ROOT / "content-crawler" / "config.json"
+_CONFIG_PATH = _PROJECT_ROOT / "config.json"
 _CONFIG_CACHE: dict | None = None
 
 

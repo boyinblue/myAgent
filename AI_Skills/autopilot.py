@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import requests
 
 from github_dispatch import trigger_content_crawler_workflow
+from archive_search import search_archive
 from runtime_config import get_config_value
 from shared_credentials import get_shared_secret, load_shared_environment
 
@@ -134,13 +135,16 @@ def _normalize_router_decision(parsed: dict | None) -> dict:
     skill = str(parsed.get("skill", "")).strip() or "fallback_chat"
     reason = str(parsed.get("reason", "")).strip() or "router_ok"
     url = str(parsed.get("url", "")).strip()
+    keyword = str(parsed.get("keyword", "")).strip()
 
-    if action not in {"chat", "python_code", "github_action"}:
+    if action not in {"chat", "python_code", "github_action", "archive_search"}:
         return {"action": "chat", "skill": "fallback_chat", "reason": "router_invalid_action"}
 
     normalized = {"action": action, "skill": skill, "reason": reason}
     if url:
         normalized["url"] = url
+    if keyword:
+        normalized["keyword"] = keyword
     return normalized
 
 
@@ -170,6 +174,28 @@ def _has_archive_intent(text: str) -> bool:
         "run_crowler",
     ]
     return any(k in lower for k in keywords)
+
+
+def _has_search_intent(text: str) -> bool:
+    lower = (text or "").lower()
+    keywords = [
+        "검색",
+        "찾아줘",
+        "찾아 줘",
+        "찾기",
+        "search",
+        "find",
+    ]
+    return any(k in lower for k in keywords)
+
+
+def _extract_search_keyword(text: str) -> str:
+    """검색 의도 키워드를 제거하고 검색어를 추출합니다."""
+    lower = (text or "").lower()
+    # 검색 키워드 제거
+    for kw in ["검색해줘", "검색해 줘", "검색", "찾아줘", "찾아 줘", "찾기", "search", "find"]:
+        lower = lower.replace(kw, "")
+    return lower.strip()
 
 
 def decide_action(user_prompt: str, skills_md: str) -> dict:
@@ -248,6 +274,16 @@ def autopilot(user_prompt: str):
         result = trigger_content_crawler_workflow(detected_url)
         print(result)
         return
+    
+    # 검색 의도 감지 시 즉시 검색 실행
+    if _has_search_intent(user_prompt):
+        keyword = _extract_search_keyword(user_prompt)
+        if keyword:
+            result = search_archive(keyword)
+            print(result)
+        else:
+            print("❌ 검색할 키워드를 입력해주세요.")
+        return
 
     try:
         decision = decide_action(user_prompt, skills_md)
@@ -282,6 +318,15 @@ def autopilot(user_prompt: str):
         target_url = decision.get("url") or _extract_first_url(user_prompt)
         result = trigger_content_crawler_workflow(target_url or "")
         print(result)
+        return
+    
+    if action == "archive_search":
+        keyword = decision.get("keyword") or _extract_search_keyword(user_prompt)
+        if keyword:
+            result = search_archive(keyword)
+            print(result)
+        else:
+            print("❌ 검색할 키워드를 입력해주세요.")
         return
 
     try:
