@@ -3,3 +3,10 @@
 # Python cache artifacts
 __pycache__/
 *.pyc
+
+# Runtime process files
+*.pid
+.dashboard.pid
+
+# SQLite databases
+*.db-journal
