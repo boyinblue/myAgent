@@ -1,8 +1,37 @@
 import os
 import re
 import yaml
+import json
 import email.utils
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+# 프로젝트 루트의 config.json 로드
+_CONFIG_CACHE = None
+
+def _load_config():
+    """config.json을 로드합니다 (캐싱)."""
+    global _CONFIG_CACHE
+    if _CONFIG_CACHE is not None:
+        return _CONFIG_CACHE
+    
+    # 스크립트 위치에서 프로젝트 루트로 이동
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent
+    config_path = project_root / "config.json"
+    
+    if not config_path.exists():
+        _CONFIG_CACHE = {"platforms": {}}
+        return _CONFIG_CACHE
+    
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            _CONFIG_CACHE = json.load(f)
+    except Exception:
+        _CONFIG_CACHE = {"platforms": {}}
+    
+    return _CONFIG_CACHE
 
 def get_formatted_date(date_str):
     """날짜 문자열을 YYYY-MM-DD 형식으로 변환"""
@@ -18,38 +47,65 @@ def get_formatted_date(date_str):
     return None
 
 def get_platform_info(url):
-    """URL을 분석하여 platform_type과 media_name을 반환"""
-
-    p_type = "Unknown"
-    m_name = "Unknown"
+    """
+    URL을 분석하여 platform_type과 media_name을 반환합니다.
+    config.json의 platforms 섹션을 기반으로 동적 매칭합니다.
+    """
+    if not url:
+        return "Unknown", "Unknown"
     
-    if "blog.naver.com" in url:
-        p_type = "NaverBlog"
-        if "boyinblue" in url:
-            m_name = "boyinblue"
-        elif "parksejin03" in url:
-            m_name = "parksejin03"
-        elif "pgi100" in url:
-            m_name = "pgi100"
-        elif "sadneye" in url:
-            m_name = "sadneye"
-    elif "tistory.com" in url:
-        p_type = "Tistory"
-        if "frankler" in url:
-            m_name = "frankler"
-        elif "worldclassproduct" in url:
-            m_name = "worldclassproduct"
-    elif "github.io" in url:
-        p_type = "GitHubPages"
-        if "boyinblue" in url:
-            m_name = "boyinblue"
-        elif "esregnet0409" in url:
-            m_name = "esregnet0409"
-    elif "youtube.com" in url or "youtu.be" in url:
-        p_type = "YouTube"
-        m_name = "saejinpark4614"
-
-    return p_type, m_name
+    config = _load_config()
+    platforms = config.get("platforms", {})
+    
+    url_lower = url.lower()
+    parsed = urlparse(url)
+    
+    # 1. Naver Blog 처리
+    if "blog.naver.com" in url_lower:
+        naver_blogs = platforms.get("naver_blog", {}).get("blogs", [])
+        for blog in naver_blogs:
+            blog_id = blog.get("blog_id", "")
+            if blog_id and blog_id.lower() in url_lower:
+                return blog.get("platform_type", "NaverBlog"), blog_id
+        return "NaverBlog", "Unknown"
+    
+    # 2. Tistory 처리
+    if "tistory.com" in url_lower:
+        tistory_blogs = platforms.get("tistory", {}).get("blogs", [])
+        for blog in tistory_blogs:
+            blog_url = blog.get("blog_url", "")
+            if blog_url:
+                blog_domain = urlparse(blog_url).netloc.lower()
+                if blog_domain in url_lower or blog.get("name", "").lower() in url_lower:
+                    return blog.get("platform_type", "Tistory"), blog.get("name", "Unknown")
+        return "Tistory", "Unknown"
+    
+    # 3. GitHub Pages 처리
+    if "github.io" in url_lower:
+        gh_blogs = platforms.get("github_pages", {}).get("blogs", [])
+        for blog in gh_blogs:
+            blog_url = blog.get("blog_url", "")
+            if blog_url:
+                blog_domain = urlparse(blog_url).netloc.lower()
+                if blog_domain in url_lower:
+                    return blog.get("platform_type", "GitHubPages"), blog.get("name", "Unknown")
+        return "GitHubPages", "Unknown"
+    
+    # 4. YouTube 처리
+    if "youtube.com" in url_lower or "youtu.be" in url_lower:
+        youtube_channels = platforms.get("youtube", {}).get("channels", [])
+        for channel in youtube_channels:
+            channel_url = channel.get("channel_url", "")
+            channel_id = channel.get("channel_id", "")
+            if (channel_url and channel_url.lower() in url_lower) or \
+               (channel_id and channel_id.lower() in url_lower):
+                return channel.get("platform_type", "YouTube"), channel.get("name", "Unknown")
+        # YouTube는 채널 정보가 없어도 플랫폼은 확정
+        if youtube_channels:
+            return "YouTube", youtube_channels[0].get("name", "Unknown")
+        return "YouTube", "Unknown"
+    
+    return "Unknown", "Unknown"
 
 def repair_md_metadata(file_path):
     try:
