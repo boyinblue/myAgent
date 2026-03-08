@@ -38,7 +38,7 @@ class ArchiveManager:
     def _create_table(self):
         # 중복 방지를 위해 link를 UNIQUE 키로 설정
         self.cur.execute('''
-            CREATE TABLE IF NOT EXISTS achieves (
+            CREATE TABLE IF NOT EXISTS posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
                 url TEXT UNIQUE,                -- 중복 방지 핵심 키
@@ -64,6 +64,7 @@ class ArchiveManager:
 
                 created_at TEXT,                -- ISO8601 형식 저장 권장
                 event_dates TEXT,               -- JSON 문자열로 저장
+                published_date TEXT,            -- 원본 발행일
                 db_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_sync_at DATETIME           -- 마지막 정합성 체크 시간
             )
@@ -71,10 +72,10 @@ class ArchiveManager:
 
         # 레코드 수정 시 db_updated_at을 자동으로 갱신하는 트리거 추가
         self.cur.execute('''
-            CREATE TRIGGER IF NOT EXISTS update_achieve_timestamp
-            AFTER UPDATE ON achieves
+            CREATE TRIGGER IF NOT EXISTS update_post_timestamp
+            AFTER UPDATE ON posts
             BEGIN
-                UPDATE achieves SET db_updated_at = CURRENT_TIMESTAMP WHERE id = old.id;
+                UPDATE posts SET db_updated_at = CURRENT_TIMESTAMP WHERE id = old.id;
             END
         ''')
         self.conn.commit()
@@ -82,7 +83,7 @@ class ArchiveManager:
     def upsert_by_url(self, url: str, title: str = "제목 없음", platform: str = "Unknown"):
         """URL을 기준으로 DB에 데이터를 추가하거나 업데이트합니다."""
         sql = '''
-            INSERT INTO achieves (url, title, platform, db_updated_at)
+            INSERT INTO posts (url, title, platform, db_updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(url) DO UPDATE SET
                 title=excluded.title,
@@ -125,7 +126,7 @@ class ArchiveManager:
             
             # DB insert (ON CONFLICT 구문 덕분에 중복 걱정 없습니다)
             sql = '''
-                INSERT INTO achieves (url, title, platform, media_name, created_at, file_path)
+                INSERT INTO posts (url, title, platform, media_name, created_at, file_path)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
                     title=excluded.title,
@@ -150,7 +151,7 @@ class ArchiveManager:
         Returns:
             True if URL is already archived, False otherwise
         """
-        sql = "SELECT title, platform, media_name FROM achieves WHERE url = ? LIMIT 1"
+        sql = "SELECT title, platform, media_name FROM posts WHERE url = ? LIMIT 1"
         self.cur.execute(sql, (url,))
 
         # 레코드의 title, platform, media_name이 모두 존재하는 확인
@@ -165,7 +166,7 @@ class ArchiveManager:
 
     def get_post_id_by_url(self, url: str):
         """URL로 post_id를 찾습니다. 블로그/모바일 양쪽 형태 시도."""
-        sql = "SELECT id FROM achieves WHERE url = ? LIMIT 1"
+        sql = "SELECT id FROM posts WHERE url = ? LIMIT 1"
         try:
             # 1. 정확한 URL로 먼저 시도
             self.cur.execute(sql, (url,))
@@ -200,7 +201,7 @@ class ArchiveManager:
         values = list(kwargs.values()) + [post_id]
         
         # 2. 업데이트 실행 (트리거가 db_updated_at을 자동으로 갱신합니다)
-        sql = f"UPDATE achieves SET {sets} WHERE id = ?"
+        sql = f"UPDATE posts SET {sets} WHERE id = ?"
         
         try:
             self.cur.execute(sql, values)
@@ -212,7 +213,7 @@ class ArchiveManager:
         """title, media_name, platform 중 하나라도 누락된 레코드를 찾습니다."""
         sql = '''
             SELECT id, url, title, media_name, platform, file_path, created_at
-            FROM achieves 
+            FROM posts 
             WHERE (title IS NULL OR title = '') 
                OR (media_name IS NULL OR media_name = '') 
                OR (platform IS NULL OR platform = '')
@@ -448,6 +449,28 @@ class ArchiveManager:
             except Exception as e:
                 print(f"[!] raw_html 저장 실패: {e}")
 
+        # DB에 포스트 저장 (중요!)
+        try:
+            self.cur.execute('''
+                INSERT INTO posts (url, title, platform, media_name, created_at, file_path, db_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(url) DO UPDATE SET
+                    title=excluded.title,
+                    platform=excluded.platform,
+                    media_name=excluded.media_name,
+                    created_at=excluded.created_at,
+                    file_path=excluded.file_path,
+                    db_updated_at=CURRENT_TIMESTAMP
+            ''', (url, title, platform_type, media_name, created_at, filepath))
+            self.conn.commit()
+            # 저장된 ID 가져오기
+            result = self.cur.execute('SELECT id FROM posts WHERE url = ?', (url,)).fetchone()
+            if result:
+                post_id = result[0]
+                print(f"[+] DB 저장 완료: ID={post_id}, URL={url}")
+        except sqlite3.Error as e:
+            print(f"[!] DB 저장 실패: {e}")
+
         return filepath
 
     @staticmethod
@@ -640,7 +663,7 @@ if __name__ == "__main__":
     else:
         # 인자 없이 실행했을 때의 기본 동작 (상태 점검 등)
         print("=== Archive Manager Status ===")
-        manager.cur.execute("SELECT COUNT(*) FROM achieves")
+        manager.cur.execute("SELECT COUNT(*) FROM posts")
         count = manager.cur.fetchone()[0]
         print(f"현재 DB에 저장된 콘텐츠 수: {count}개")
         print("사용법 예시: python archive_manager.py --url '주소' --title '제목'")
