@@ -72,15 +72,20 @@
 
 ### 6) `archive_search`
 - **action**: `archive_search`
-- **when**: 아카이브 검색 요청
+- **when**: 아카이브에서 키워드 검색 또는 검색 결과 확인 요청
 - **heuristic**: ("검색"|"찾기"|"find") 키워드
 - **output**: 최대 10건 (제목, 작성자, 플랫폼, 날짜, 요약, URL)
+- **사용 예**:
+  - "와인 검색해줘" → 와인 키워드로 포스트 검색
+  - "아카이브에 와인 입력하면 포스트가 별로 안 나와" → 와인 검색 (검색 품질 확인)
+  - "네이버 검색 결과 보여줘" → 네이버 키워드로 검색
 
 ### 7) `archive_validate`
 - **action**: `archive_validate`
-- **when**: 아카이브 무결성 검사 요청
+- **when**: 아카이브 DB의 데이터 무결성 검사 요청 (필수 필드 누락 여부 확인)
 - **heuristic**: ("무결성"|"검증"|"누락"|"불완전"|"validate"|"integrity") + ("아카이브"|"archive"|"db") 키워드
-- **output**: 전체 건수, 누락 필드별 통계, 샘플 레코드
+- **output**: 전체 건수, 누락 필드별 통계 (제목, URL, 플랫폼 등), 샘플 레코드
+- **주의**: 검색 결과 수량 문제는 `archive_search` 사용 (데이터 누락이 아닌 검색 품질 이슈)
 
 ### 8) `web_dashboard_launch`
 - **action**: `web_dashboard_launch`
@@ -98,6 +103,8 @@
 - "https://blog.naver.com/xxx/123 추가" → `content_crawler_dispatch` (heuristic)
 - "챗봇 불편한 점 이슈 등록해줘" → `github_issue_feedback` (heuristic)
 - "파이썬 검색" → `archive_search` (heuristic)
+- "와인으로 검색하면 결과가 하나만 나와" → `archive_search` (LLM router)
+- "아카이브에 제목 없는 항목 찾기" → `archive_validate` (LLM router)
 - "아카이브 무결성 검증" → `archive_validate` (heuristic)
 - "웹 대시보드 시작" → `web_dashboard_launch` (heuristic)
 - "대시보드 종료" → `web_dashboard_stop` (heuristic)
