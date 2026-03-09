@@ -1,4 +1,12 @@
 import argparse
+import sys
+import io
+import platform
+
+# Windows에서 UTF-8 이모지 출력을 위한 설정
+if platform.system() == 'Windows':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 from email_agent.config import load_settings
 from email_agent.imap_client import DaumImapClient

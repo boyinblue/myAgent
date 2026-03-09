@@ -6,6 +6,7 @@
 """
 
 import os
+import sys
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -15,10 +16,16 @@ from urllib.parse import unquote
 import os  # os.path.basename 사용을 위해 os도 확인 필요
 import re
 
+# Windows 콘솔 UTF-8 출력 설정
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 class ArchiveManager:
     """콘텐츠 아카이브 관리자"""
 
-    def __init__(self, archive_root: str = "./../archive", db_path: str = './../archive/archive_index.db'):
+    def __init__(self, archive_root: str = "./../../archive", db_path: str = './../archive/archive_index.db'):
         """
         Args:
             archive_root: 아카이브 루트 디렉토리

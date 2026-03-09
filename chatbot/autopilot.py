@@ -6,11 +6,18 @@ import re
 import subprocess
 import shutil
 import sqlite3
+import io
+import platform
 from pathlib import Path
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 import requests
+
+# Windows에서 UTF-8 이모지 출력을 위한 설정
+if platform.system() == 'Windows':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(ROOT_DIR)
