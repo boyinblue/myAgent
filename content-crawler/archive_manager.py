@@ -25,14 +25,17 @@ if sys.platform == 'win32':
 class ArchiveManager:
     """콘텐츠 아카이브 관리자"""
 
-    def __init__(self, archive_root: str = "./../../archive", db_path: str = './../archive/archive_index.db'):
+    def __init__(self, archive_root: str = None, db_path: str = None):
         """
         Args:
-            archive_root: 아카이브 루트 디렉토리
-            db_path: 인덱스용 SQLite 데이터베이스 경로
+            archive_root: 아카이브 루트 디렉토리 (None이면 환경변수 또는 기본값 사용)
+            db_path: 인덱스용 SQLite 데이터베이스 경로 (None이면 환경변수 또는 기본값 사용)
         """
-        self.archive_root = archive_root
-        os.makedirs(archive_root, exist_ok=True)
+        # 명시적 전달 > 환경변수 > 기본값
+        self.archive_root = archive_root or os.getenv('ARCHIVE_ROOT', './archive')
+        db_path = db_path or os.getenv('ARCHIVE_DB', os.path.join(self.archive_root, 'archive_index.db'))
+        
+        os.makedirs(self.archive_root, exist_ok=True)
 
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
 
@@ -715,8 +718,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # 1. 매니저 초기화 (이때 DB 파일과 테이블이 생성됩니다)
-    # archive_root와 db_path는 필요에 따라 수정하세요.
-    manager = ArchiveManager(archive_root="../archive", db_path="../archive/archive_index.db")
+    # archive_root와 db_path는 환경변수에서 가져오거나 None으로 기본값 사용
+    manager = ArchiveManager()
 
     if args.url:
         print(f"[*] 데이터 추가 시도 중: {args.url}")

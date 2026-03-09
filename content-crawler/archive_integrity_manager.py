@@ -228,7 +228,11 @@ def rename_md_files(file_path):
         title = metadata.get('title')
 
         import archive_manager as ArchiveManager
-        archive_mgr = ArchiveManager.ArchiveManager()
+        # archive_root를 명시적으로 지정하여 경로 오류 방지
+        script_dir = Path(__file__).resolve().parent
+        project_root = script_dir.parent
+        archive_root = project_root / 'archive'
+        archive_mgr = ArchiveManager.ArchiveManager(archive_root=str(archive_root))
         title = archive_mgr._slugify_title(title)
 
         if not created_at or not platform_type or not media_name or not title:

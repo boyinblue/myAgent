@@ -4,9 +4,15 @@
 
 from crawlers.naver_blog import NaverBlogCrawler
 from archive_manager import ArchiveManager
+import os
+from pathlib import Path
+
+# 아카이브 루트 결정 (프로젝트 루트)
+script_dir = Path(__file__).resolve().parent
+archive_root = script_dir.parent / 'archive'
 
 # 아카이브 매니저 생성
-am = ArchiveManager('..')
+am = ArchiveManager(archive_root=str(archive_root))
 
 # 테스트 URL
 test_url = 'https://blog.naver.com/boyinblue/221222400123'
