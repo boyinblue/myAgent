@@ -11,6 +11,23 @@
 - **LLM Router Second**: 애매한 요청만 LLM 라우터 사용
 - **Benefit**: 응답 속도 향상, 토큰 비용 절감
 
+## Slash Commands (최우선 처리)
+사용자가 `/`로 시작하는 명령어를 입력하면 LLM 라우팅을 완전히 건너뛰고 즉시 실행합니다.
+
+**사용 가능한 명령어**:
+- `/search <키워드>` - 아카이브에서 키워드 검색
+- `/validate` - 아카이브 무결성 검사
+- `/issue <설명>` - GitHub 이슈 등록
+- `/dashboard` - 웹 대시보드 실행
+- `/dashboard_stop` - 웹 대시보드 종료
+- `/archive <URL>` - URL을 아카이브에 추가
+- `/help` - 사용 가능한 명령어 목록 표시
+
+**예시**:
+- `/search 와인` → archive_search 즉시 실행 (LLM 라우팅 생략)
+- `/validate` → archive_validate 즉시 실행
+- `/help` → 도움말 표시
+
 ## Skills
 
 ### 1) `python_task_runner`

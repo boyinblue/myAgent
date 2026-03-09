@@ -442,6 +442,44 @@ def _prepare_search_keyword(user_prompt: str) -> str:
     return heuristic_keyword
 
 
+def _parse_slash_command(text: str) -> tuple:
+    """슬래시 명령어를 파싱합니다.
+    
+    Returns:
+        (command, args): command는 슬래시 없는 명령어, args는 나머지 텍스트
+                        슬래시 명령어가 아니면 (None, original_text)
+    """
+    text = (text or "").strip()
+    if not text.startswith("/"):
+        return (None, text)
+    
+    # 첫 공백 또는 줄바꿈까지가 명령어
+    parts = text[1:].split(maxsplit=1)
+    if not parts:
+        return (None, text)
+    
+    command = parts[0].lower()
+    args = parts[1] if len(parts) > 1 else ""
+    
+    return (command, args)
+
+
+def _get_slash_commands_help() -> str:
+    """사용 가능한 슬래시 명령어 목록을 반환합니다."""
+    return """📌 사용 가능한 슬래시 명령어:
+
+/search <키워드> - 아카이브에서 키워드 검색
+/validate - 아카이브 무결성 검사
+/issue <설명> - GitHub 이슈 등록
+/dashboard - 웹 대시보드 실행
+/dashboard_stop - 웹 대시보드 종료
+/archive <URL> - URL을 아카이브에 추가
+/help - 이 도움말 표시
+
+💡 슬래시 명령어는 LLM 라우팅을 건너뛰고 즉시 실행됩니다.
+예: /search 와인"""
+
+
 def decide_action(user_prompt: str, skills_md: str) -> dict:
     system_prompt = (
         "You are an autopilot router. "
@@ -512,6 +550,54 @@ def execute_script(script_path: str):
 def autopilot(user_prompt: str):
     raw_skills_md = load_skills_markdown()
     skills_md = build_skills_context(raw_skills_md, get_skills_prompt_max_chars())
+
+    # 슬래시 명령어 처리 (최우선)
+    command, args = _parse_slash_command(user_prompt)
+    if command:
+        if command == "help":
+            print(_get_slash_commands_help())
+            return
+        elif command == "search":
+            if not args:
+                print("❌ 검색할 키워드를 입력해주세요. 예: /search 와인")
+                return
+            keyword = _prepare_search_keyword(args)
+            if keyword:
+                result = search_archive(keyword)
+                print(result)
+            else:
+                print("❌ 검색할 키워드를 입력해주세요.")
+            return
+        elif command == "validate":
+            result = validate_archive()
+            print(result)
+            return
+        elif command == "issue":
+            if not args:
+                print("❌ 이슈 내용을 입력해주세요. 예: /issue 대시보드 토큰 문제")
+                return
+            result = create_github_issue_from_feedback(args)
+            print(result)
+            return
+        elif command in ["dashboard", "dashboard_start", "dashboard_launch"]:
+            result = launch_dashboard()
+            print(result.get('message', ''))
+            return
+        elif command == "dashboard_stop":
+            result = stop_dashboard()
+            print(result.get('message', ''))
+            return
+        elif command == "archive":
+            url = _extract_first_url(args)
+            if not url:
+                print("❌ 아카이브할 URL을 입력해주세요. 예: /archive https://blog.naver.com/...")
+                return
+            result = trigger_content_crawler_workflow(url)
+            print(result)
+            return
+        else:
+            print(f"❌ 알 수 없는 명령어: /{command}\n\n{_get_slash_commands_help()}")
+            return
 
     # URL + 아카이브 의도는 LLM 라우터를 우회해 즉시 GitHub Action 실행
     detected_url = _extract_first_url(user_prompt)
