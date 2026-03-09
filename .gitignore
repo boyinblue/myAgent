@@ -12,5 +12,8 @@ __pycache__/
 # SQLite databases
 *.db-journal
 
+# Google API credentials
+credentials.json
+
 # Private archive data
 /archive_secret/
