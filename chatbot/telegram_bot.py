@@ -268,7 +268,10 @@ def validate_runtime_config() -> bool:
     return True
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
+    if update.message is None or update.message.text is None:
+        return
+
+    user_text = update.message.text.strip()
     chat_id = update.effective_chat.id
 
     # 🔐 화이트리스트 체크: 본인이 아니면 무시 (보안)
@@ -281,6 +284,79 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    if user_text.lower() == "/restart":
+        await context.bot.send_message(chat_id=chat_id, text="🔄 챗봇을 재시작합니다...")
+        _append_chatbot_log(
+            event="restart_requested",
+            chat_id=chat_id,
+            user_text=user_text,
+        )
+
+        def _restart_process() -> None:
+            import time
+
+            time.sleep(1)
+            os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)])
+
+        asyncio.create_task(asyncio.to_thread(_restart_process))
+        return
+
+    if user_text.lower() == "/save":
+        await context.bot.send_message(chat_id=chat_id, text="💾 git_auto_commit.py 실행 중입니다...")
+
+        script_path = os.path.join(parent_dir, "tools", "git_auto_commit.py")
+        if not os.path.exists(script_path):
+            await context.bot.send_message(chat_id=chat_id, text="❌ 스크립트를 찾을 수 없습니다: tools/git_auto_commit.py")
+            _append_chatbot_log(
+                event="save_failed",
+                chat_id=chat_id,
+                user_text=user_text,
+                error="missing_git_auto_commit_script",
+            )
+            return
+
+        try:
+            proc = await asyncio.wait_for(
+                asyncio.to_thread(
+                    subprocess.run,
+                    [sys.executable, script_path],
+                    input="y\n",
+                    capture_output=True,
+                    text=True,
+                    cwd=parent_dir,
+                    timeout=180,
+                    check=False,
+                ),
+                timeout=190,
+            )
+            output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+            if not output:
+                output = "(출력 없음)"
+            await context.bot.send_message(chat_id=chat_id, text=f"✅ /save 실행 완료\n{output[:3800]}")
+            _append_chatbot_log(
+                event="save_executed",
+                chat_id=chat_id,
+                user_text=user_text,
+                bot_output=output[:1000],
+            )
+        except asyncio.TimeoutError:
+            await context.bot.send_message(chat_id=chat_id, text="⏱️ /save 실행 시간이 초과되었습니다.")
+            _append_chatbot_log(
+                event="save_timeout",
+                chat_id=chat_id,
+                user_text=user_text,
+                error="save_timeout",
+            )
+        except Exception as exc:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ /save 실행 중 오류: {exc}")
+            _append_chatbot_log(
+                event="save_failed",
+                chat_id=chat_id,
+                user_text=user_text,
+                error=str(exc),
+            )
+        return
+
     await context.bot.send_message(chat_id=chat_id, text=f"추론중...")
 
     if not _reload_ai_skill_modules() or autopilot is None:

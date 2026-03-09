@@ -1,6 +1,5 @@
 """지정된 날짜에 가장 가까운 포스트 조회"""
 import sqlite3
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -114,6 +113,7 @@ def _find_nearest_post(target_date_str: str) -> Optional[dict]:
         # 목표 날짜와 각 포스트 날짜 간 차이 계산
         try:
             target_dt = datetime.strptime(target_date_str, "%Y-%m-%d")
+            target_date = target_dt.date()
         except ValueError:
             return None
 
@@ -142,7 +142,7 @@ def _find_nearest_post(target_date_str: str) -> Optional[dict]:
             if not pub_dt:
                 continue
 
-            diff = abs((pub_dt - target_dt).days)
+            diff = abs((pub_dt.date() - target_date).days)
             diff_td = timedelta(days=diff)
 
             if diff_td < min_diff:
@@ -154,16 +154,6 @@ def _find_nearest_post(target_date_str: str) -> Optional[dict]:
     except sqlite3.Error:
         return None
     except Exception:
-        return None
-    except sqlite3.Error as e:
-        import sys
-        print(f"[DEBUG] SQL Error in _find_nearest_post: {e}", file=sys.stderr)
-        return None
-    except Exception as e:
-        import sys
-        print(f"[DEBUG] Exception in _find_nearest_post: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
         return None
 
 
@@ -211,6 +201,7 @@ def find_post_by_date(date_input: str) -> str:
     # 목표 날짜로부터의 거리 계산 (UI 표시용)
     try:
         target_dt = datetime.strptime(parsed_date, "%Y-%m-%d")
+        target_date = target_dt.date()
         
         # published_date 또는 created_at에서 날짜 추출
         pub_date_str = None
@@ -231,7 +222,7 @@ def find_post_by_date(date_input: str) -> str:
                 pub_date_str = pub_dt.strftime("%Y-%m-%d")
         
         if pub_dt:
-            days_diff = abs((pub_dt - target_dt).days)
+            days_diff = abs((pub_dt.date() - target_date).days)
             diff_str = f" (목표일로부터 {days_diff}일 차이)" if days_diff > 0 else " (정확한 날짜)"
         else:
             diff_str = ""
