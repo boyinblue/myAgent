@@ -24,51 +24,51 @@ def validate_archive() -> str:
         cursor = conn.cursor()
         
         # 전체 레코드 수
-        cursor.execute("SELECT COUNT(*) as total FROM archive_index")
+        cursor.execute("SELECT COUNT(*) as total FROM posts")
         total = cursor.fetchone()["total"]
         
         issues = []
         
         # 1. 제목 누락
-        cursor.execute("SELECT COUNT(*) as cnt FROM archive_index WHERE title IS NULL OR title = ''")
+        cursor.execute("SELECT COUNT(*) as cnt FROM posts WHERE title IS NULL OR title = ''")
         missing_title = cursor.fetchone()["cnt"]
         if missing_title > 0:
             issues.append(f"❌ 제목 누락: {missing_title}건")
         
         # 2. URL 누락
-        cursor.execute("SELECT COUNT(*) as cnt FROM archive_index WHERE url IS NULL OR url = ''")
+        cursor.execute("SELECT COUNT(*) as cnt FROM posts WHERE url IS NULL OR url = ''")
         missing_url = cursor.fetchone()["cnt"]
         if missing_url > 0:
             issues.append(f"❌ URL 누락: {missing_url}건")
         
-        # 3. 작성자 누락
-        cursor.execute("SELECT COUNT(*) as cnt FROM archive_index WHERE author IS NULL OR author = ''")
-        missing_author = cursor.fetchone()["cnt"]
-        if missing_author > 0:
-            issues.append(f"⚠️ 작성자 누락: {missing_author}건")
+        # 3. 미디어명 누락
+        cursor.execute("SELECT COUNT(*) as cnt FROM posts WHERE media_name IS NULL OR media_name = ''")
+        missing_media = cursor.fetchone()["cnt"]
+        if missing_media > 0:
+            issues.append(f"⚠️ 미디어명 누락: {missing_media}건")
         
         # 4. 날짜 누락
-        cursor.execute("SELECT COUNT(*) as cnt FROM archive_index WHERE published_date IS NULL OR published_date = ''")
+        cursor.execute("SELECT COUNT(*) as cnt FROM posts WHERE published_date IS NULL OR published_date = ''")
         missing_date = cursor.fetchone()["cnt"]
         if missing_date > 0:
             issues.append(f"⚠️ 날짜 누락: {missing_date}건")
         
         # 5. 플랫폼 누락
-        cursor.execute("SELECT COUNT(*) as cnt FROM archive_index WHERE platform IS NULL OR platform = ''")
+        cursor.execute("SELECT COUNT(*) as cnt FROM posts WHERE platform IS NULL OR platform = ''")
         missing_platform = cursor.fetchone()["cnt"]
         if missing_platform > 0:
             issues.append(f"❌ 플랫폼 누락: {missing_platform}건")
         
-        # 6. 요약 누락 (선택 필드이므로 warning)
-        cursor.execute("SELECT COUNT(*) as cnt FROM archive_index WHERE summary IS NULL OR summary = ''")
-        missing_summary = cursor.fetchone()["cnt"]
-        if missing_summary > 0:
-            issues.append(f"ℹ️ 요약 누락: {missing_summary}건 (선택 필드)")
+        # 6. 키워드 누락 (선택 필드이므로 warning)
+        cursor.execute("SELECT COUNT(*) as cnt FROM posts WHERE keywords IS NULL OR keywords = ''")
+        missing_keywords = cursor.fetchone()["cnt"]
+        if missing_keywords > 0:
+            issues.append(f"ℹ️ 키워드 누락: {missing_keywords}건 (선택 필드)")
         
         # 샘플 누락 레코드 조회 (최대 5건)
         cursor.execute("""
-            SELECT id, title, url, author, published_date, platform
-            FROM archive_index
+            SELECT id, title, url, media_name, published_date, platform
+            FROM posts
             WHERE 
                 (title IS NULL OR title = '')
                 OR (url IS NULL OR url = '')
@@ -92,7 +92,8 @@ def validate_archive() -> str:
                 title = row["title"] or "(제목 없음)"
                 url = row["url"] or "(URL 없음)"
                 platform = row["platform"] or "(플랫폼 없음)"
-                result.append(f"  {idx}. {title} | {platform} | {url}")
+                media_name = row["media_name"] or "(미디어 없음)"
+                result.append(f"  {idx}. {title} | {platform} | {media_name} | {url}")
         
         return "\n".join(result)
     
