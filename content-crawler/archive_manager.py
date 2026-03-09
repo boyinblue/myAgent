@@ -504,17 +504,22 @@ class ArchiveManager:
 
         # DB에 포스트 저장 (중요!)
         try:
+            # images를 JSON 문자열로 변환
+            import json
+            images_json = json.dumps(safe_images, ensure_ascii=False) if safe_images else ""
+            
             self.cur.execute('''
-                INSERT INTO posts (url, title, platform, media_name, created_at, file_path, db_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO posts (url, title, platform, media_name, created_at, file_path, images, db_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(url) DO UPDATE SET
                     title=excluded.title,
                     platform=excluded.platform,
                     media_name=excluded.media_name,
                     created_at=excluded.created_at,
                     file_path=excluded.file_path,
+                    images=excluded.images,
                     db_updated_at=CURRENT_TIMESTAMP
-            ''', (url, title, platform_type, media_name, created_at, filepath))
+            ''', (url, title, platform_type, media_name, created_at, filepath, images_json))
             self.conn.commit()
             # 저장된 ID 가져오기
             result = self.cur.execute('SELECT id FROM posts WHERE url = ?', (url,)).fetchone()

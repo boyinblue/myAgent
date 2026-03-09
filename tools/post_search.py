@@ -52,7 +52,8 @@ def search_posts(keyword: str, limit: int = 10) -> str:
             published_date,
             keywords,
             tags,
-            platform
+            platform,
+            images
         FROM posts
         """
 
@@ -102,12 +103,31 @@ def search_posts(keyword: str, limit: int = 10) -> str:
             published = row["published_date"] or "날짜 미상"
             platform = row["platform"] or "플랫폼 미상"
             keywords = (row["keywords"] or "")[:100]
+            images_json = row["images"] or ""
+
+            # 첫 번째 이미지 URL 추출
+            thumbnail_url = ""
+            if images_json:
+                try:
+                    import json
+                    images_list = json.loads(images_json)
+                    if images_list and isinstance(images_list, list) and len(images_list) > 0:
+                        first_image = images_list[0]
+                        if isinstance(first_image, dict):
+                            thumbnail_url = first_image.get("url", "")
+                        elif isinstance(first_image, str):
+                            thumbnail_url = first_image
+                except Exception:
+                    pass
 
             result_text = (
                 f"\n{idx}. {title}\n"
                 f"   📝 {media_name} | {platform}\n"
                 f"   📅 {published}\n"
             )
+
+            if thumbnail_url:
+                result_text += f"   🖼️ {thumbnail_url}\n"
 
             if keywords:
                 result_text += f"   🏷️ {keywords}\n"
