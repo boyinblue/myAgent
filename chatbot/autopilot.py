@@ -531,21 +531,16 @@ def _parse_slash_command(text: str) -> tuple:
 
 def _get_slash_commands_help() -> str:
     """사용 가능한 슬래시 명령어 목록을 반환합니다."""
-    return """📌 사용 가능한 슬래시 명령어:
+    return """📌 주요 슬래시 명령어:
 
-/search <키워드> - 아카이브에서 키워드 검색
-/validate - 아카이브 무결성 검사
-/diary <YYYYMMDD|YYMMDD> - 해당 날짜에 가장 가까운 포스트 조회
-/issue create <내용> - GitHub 이슈 등록(중복 검사 포함)
-/issue list - 오픈된 이슈 목록 조회
-/issue history - 종료된 이슈 목록 조회
-/dashboard - 웹 대시보드 실행
-/dashboard_stop - 웹 대시보드 종료
-/archive <URL> - URL을 아카이브에 추가
-/help - 이 도움말 표시
-
-💡 슬래시 명령어는 LLM 라우팅을 건너뛰고 즉시 실행됩니다.
-예: /search 와인"""
+/post <키워드> - 포스트 검색
+/post <URL> - URL 아카이브에 추가
+/diary <날짜> - 날짜 근처 포스트 조회
+/issue create <내용> - 이슈 등록
+/search <키워드> - 검색
+/restart - 챗봇 재시작
+/save - 변경사항 커밋
+/help - 명령어 목록"""
 
 
 def _load_help_markdown() -> str:
@@ -827,7 +822,12 @@ def autopilot(user_prompt: str):
                 print(validate_posts())
                 return
 
-            print("❌ /post 하위 명령은 search | validate 또는 URL 입력만 지원합니다.")
+            # 서브커맨드가 search/validate가 아니면 전체를 검색어로 처리
+            keyword = _prepare_search_keyword(raw_args)
+            if keyword:
+                print(search_posts(keyword))
+            else:
+                print("❌ 검색할 키워드를 입력해주세요.")
             return
 
         if command == "dashboard":
@@ -872,6 +872,10 @@ def autopilot(user_prompt: str):
                 print("예: /diary 20260309 또는 /diary 260309")
                 return
             print(find_post_by_date(date_input))
+            return
+
+        if command == "help":
+            print(_get_slash_commands_help())
             return
 
         if _handle_markdown_command(command, args, skills_md):
