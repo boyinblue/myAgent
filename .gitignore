@@ -14,6 +14,7 @@ __pycache__/
 
 # Google API credentials
 credentials.json
+token.pickle
 
 # Private archive data
 /archive_secret/
