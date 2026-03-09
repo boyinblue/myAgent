@@ -166,7 +166,7 @@ def _find_similar_issues(repo: str, title: str, token: str, threshold: float = 0
         resp = requests.get(endpoint, headers=headers, params=params, timeout=15)
         if resp.status_code != 200:
             return []
-        
+
         issues = resp.json() if resp.content else []
         if not isinstance(issues, list):
             return []
@@ -193,10 +193,108 @@ def _find_similar_issues(repo: str, title: str, token: str, threshold: float = 0
                     "url": issue.get("html_url"),
                     "similarity": round(similarity, 2),
                 })
-        
+
         return sorted(similar, key=lambda x: x["similarity"], reverse=True)[:3]
     except Exception:
         return []
+
+
+def _fetch_issue_list(repo: str, token: str, state: str, limit: int = 20) -> tuple[bool, str, list[dict]]:
+    endpoint = f"https://api.github.com/repos/{repo}/issues"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    params = {
+        "state": state,
+        "labels": "chatbot,feedback",
+        "per_page": max(1, min(int(limit), 100)),
+        "sort": "created",
+        "direction": "desc",
+    }
+
+    try:
+        resp = requests.get(endpoint, headers=headers, params=params, timeout=20)
+    except Exception as exc:
+        return (False, f"[ERROR] GitHub Issue 목록 조회 실패: {exc}", [])
+
+    if resp.status_code != 200:
+        detail = ""
+        try:
+            body = resp.json()
+            detail = body.get("message") if isinstance(body, dict) else str(body)
+        except Exception:
+            detail = (resp.text or "")[:500]
+        return (False, f"[ERROR] GitHub Issue 목록 조회 실패: status={resp.status_code}, detail={detail}", [])
+
+    issues = resp.json() if resp.content else []
+    if not isinstance(issues, list):
+        return (False, "[ERROR] GitHub Issue 목록 응답 형식이 올바르지 않습니다.", [])
+
+    normalized = []
+    for issue in issues:
+        # pull request는 제외
+        if isinstance(issue, dict) and issue.get("pull_request"):
+            continue
+        normalized.append(issue)
+
+    return (True, "", normalized)
+
+
+def _format_issue_list(issues: list[dict], state: str) -> str:
+    state_name = "오픈" if state == "open" else "종료"
+    if not issues:
+        return f"[INFO] 현재 {state_name}된 이슈가 없습니다."
+
+    lines = [f"[{state_name} 이슈] 총 {len(issues)}건"]
+    for idx, issue in enumerate(issues, 1):
+        number = issue.get("number", "?")
+        title = str(issue.get("title", "(제목 없음)")).strip()
+        url = str(issue.get("html_url", "")).strip()
+        created_at = str(issue.get("created_at", "")).strip()
+        closed_at = str(issue.get("closed_at", "")).strip()
+
+        meta = f"created: {created_at}" if created_at else "created: -"
+        if state == "closed" and closed_at:
+            meta += f" | closed: {closed_at}"
+
+        lines.append(f"{idx}. #{number} {title}")
+        if url:
+            lines.append(f"   {meta} | {url}")
+        else:
+            lines.append(f"   {meta}")
+
+    return "\n".join(lines)
+
+
+def list_github_issues(state: str = "open") -> str:
+    normalized_state = (state or "open").strip().lower()
+    if normalized_state not in {"open", "closed"}:
+        return "[ERROR] state는 open 또는 closed만 지원합니다."
+
+    token = (get_shared_secret("GITHUB_TOKEN") or "").strip()
+    repo = _resolve_github_repo()
+
+    if not token:
+        return "[ERROR] GITHUB_TOKEN이 설정되지 않았습니다."
+    if not repo or "/" not in repo:
+        return "[ERROR] GitHub repo 설정이 비어있거나 플레이스홀더입니다. content-crawler/config.json의 autopilot.github_dispatch.repo를 실제 owner/repo로 설정하거나, .env의 GITHUB_REPO를 설정하세요."
+
+    limit = int(get_config_value("autopilot.github_issue.list_limit", 20))
+    ok, message, issues = _fetch_issue_list(repo=repo, token=token, state=normalized_state, limit=limit)
+    if not ok:
+        return message
+
+    return _format_issue_list(issues=issues, state=normalized_state)
+
+
+def list_open_github_issues() -> str:
+    return list_github_issues("open")
+
+
+def list_closed_github_issues() -> str:
+    return list_github_issues("closed")
 
 
 def create_github_issue_from_feedback(user_prompt: str) -> str:

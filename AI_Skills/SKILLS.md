@@ -21,7 +21,7 @@
 - `/dashboard` - 웹 대시보드 실행
 - `/dashboard_stop` - 웹 대시보드 종료
 - `/archive <URL>` - URL을 아카이브에 추가
-- `/help` - 사용 가능한 명령어 목록 표시
+- `/help` - `help.md`가 있으면 해당 내용을 출력, 없으면 기본 명령어 목록 표시
 
 **예시**:
 - `/search 와인` → archive_search 즉시 실행 (LLM 라우팅 생략)

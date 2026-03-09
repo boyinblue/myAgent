@@ -3,30 +3,95 @@ import os
 import runpy
 import sys
 import re
+import subprocess
 from urllib.parse import urlparse
 
 import requests
 
-from github_dispatch import trigger_content_crawler_workflow, create_github_issue_from_feedback
-from archive_search import search_archive
-from archive_validate import validate_archive
-from web_dashboard_launcher import launch_dashboard, stop_dashboard
-from runtime_config import get_config_value
-from shared_credentials import get_shared_secret, load_shared_environment
-
-
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(ROOT_DIR)
+TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
+if TOOLS_DIR not in sys.path:
+    sys.path.insert(0, TOOLS_DIR)
+
+try:
+    from issue import (
+        trigger_content_crawler_workflow,
+        create_github_issue_from_feedback,
+        list_open_github_issues,
+        list_closed_github_issues,
+    )
+except Exception:
+    def trigger_content_crawler_workflow(target_url: str) -> str:
+        return "[ERROR] issue 모듈을 찾을 수 없습니다."
+
+    def create_github_issue_from_feedback(user_prompt: str) -> str:
+        return "[ERROR] issue 모듈을 찾을 수 없습니다."
+
+    def list_open_github_issues() -> str:
+        return "[ERROR] issue 모듈을 찾을 수 없습니다."
+
+    def list_closed_github_issues() -> str:
+        return "[ERROR] issue 모듈을 찾을 수 없습니다."
+
+try:
+    from diary import find_post_by_date
+except Exception:
+    def find_post_by_date(date_input: str) -> str:
+        return "[ERROR] diary 모듈을 찾을 수 없습니다."
+
+try:
+    from post_search import search_posts
+except Exception:
+    def search_posts(keyword: str, limit: int = 10) -> str:
+        return "[ERROR] post_search 모듈을 찾을 수 없습니다."
+
+try:
+    from post_validate import validate_posts
+except Exception:
+    def validate_posts() -> str:
+        return "[ERROR] post_validate 모듈을 찾을 수 없습니다."
+
+try:
+    from dashboard import launch_dashboard, stop_dashboard
+except Exception:
+    def launch_dashboard() -> dict:
+        return {"success": False, "message": "[ERROR] dashboard 모듈을 찾을 수 없습니다."}
+
+    def stop_dashboard() -> dict:
+        return {"success": False, "message": "[ERROR] dashboard 모듈을 찾을 수 없습니다."}
+
+try:
+    from runtime_config import get_config_value
+except Exception:
+    def get_config_value(path: str, default=None):
+        return default
+
+try:
+    from shared_credentials import get_shared_secret, load_shared_environment
+except Exception:
+    def get_shared_secret(key: str, default: str = "") -> str:
+        return default
+
+    def load_shared_environment() -> None:
+        return
+
+
 SKILLS_MD_PATH = os.path.join(ROOT_DIR, "SKILLS.md")
+LEGACY_SKILLS_MD_PATH = os.path.join(os.path.dirname(ROOT_DIR), "AI_Skills", "SKILLS.md")
 DEFAULT_SKILLS_PROMPT_MAX_CHARS = 4500
 
 load_shared_environment()
 
 
 def load_skills_markdown() -> str:
-    if not os.path.exists(SKILLS_MD_PATH):
-        return ""
-    with open(SKILLS_MD_PATH, "r", encoding="utf-8") as f:
-        return f.read()
+    candidates = [SKILLS_MD_PATH, LEGACY_SKILLS_MD_PATH]
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
 
 
 def _extract_markdown_section(markdown_text: str, heading: str) -> str:
@@ -470,7 +535,10 @@ def _get_slash_commands_help() -> str:
 
 /search <키워드> - 아카이브에서 키워드 검색
 /validate - 아카이브 무결성 검사
-/issue <설명> - GitHub 이슈 등록
+/diary <YYYYMMDD|YYMMDD> - 해당 날짜에 가장 가까운 포스트 조회
+/issue create <내용> - GitHub 이슈 등록(중복 검사 포함)
+/issue list - 오픈된 이슈 목록 조회
+/issue history - 종료된 이슈 목록 조회
 /dashboard - 웹 대시보드 실행
 /dashboard_stop - 웹 대시보드 종료
 /archive <URL> - URL을 아카이브에 추가
@@ -478,6 +546,180 @@ def _get_slash_commands_help() -> str:
 
 💡 슬래시 명령어는 LLM 라우팅을 건너뛰고 즉시 실행됩니다.
 예: /search 와인"""
+
+
+def _load_help_markdown() -> str:
+    """help.md 파일이 있으면 내용을 반환하고, 없으면 빈 문자열을 반환합니다."""
+    candidates = [
+        os.path.join(ROOT_DIR, "help.md"),
+        os.path.join(os.path.dirname(ROOT_DIR), "help.md"),
+    ]
+
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            except Exception as exc:
+                return f"[ERROR] help.md 읽기 실패: {exc}"
+
+    return ""
+
+
+def _resolve_command_markdown_path(command: str) -> str:
+    """/command 에 대응하는 markdown 파일 경로를 반환합니다. 없으면 빈 문자열."""
+    normalized = (command or "").strip().lower()
+    if not normalized or not re.fullmatch(r"[a-z0-9_-]+", normalized):
+        return ""
+
+    file_name = f"{normalized}.md"
+    candidates = [
+        os.path.join(ROOT_DIR, file_name),
+        os.path.join(os.path.dirname(ROOT_DIR), file_name),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return ""
+
+
+def _extract_fenced_python_code(raw_text: str) -> str:
+    """LLM 응답에서 ```python ... ``` 코드블록을 추출합니다."""
+    text = (raw_text or "").strip()
+    if not text:
+        return ""
+
+    patterns = [
+        r"```python\s*(.*?)\s*```",
+        r"```py\s*(.*?)\s*```",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            return (match.group(1) or "").strip()
+
+    return ""
+
+
+def _execute_python_from_text(raw_text: str, command: str) -> bool:
+    """텍스트가 파이썬 스크립트면 실행하고 True를 반환합니다."""
+    rendered = (raw_text or "").strip()
+    if not rendered:
+        return False
+
+    # 1) '# script_name.py' 헤더가 있는 기존 포맷 우선 처리
+    script_path = extract_python_code(rendered)
+    if script_path:
+        print(f"[INFO] markdown 명령에서 생성된 스크립트 실행: {os.path.basename(script_path)}")
+        execute_script(script_path)
+        return True
+
+    # 2) fenced python 코드블록 처리
+    code_block = _extract_fenced_python_code(rendered)
+    if not code_block:
+        return False
+
+    safe_command = re.sub(r"[^a-z0-9_-]", "_", (command or "").lower()) or "slash"
+    script_name = f"_slash_{safe_command}_auto.py"
+    script_path = os.path.join(ROOT_DIR, script_name)
+
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(code_block)
+
+    print(f"[INFO] markdown 명령의 python 코드블록 실행: {script_name}")
+    execute_script(script_path)
+    return True
+
+
+def _handle_markdown_command(command: str, args: str, skills_md: str) -> bool:
+    """/command 에 대응하는 markdown가 있으면 LLM 처리 후 출력합니다."""
+    markdown_path = _resolve_command_markdown_path(command)
+    if not markdown_path:
+        return False
+
+    try:
+        with open(markdown_path, "r", encoding="utf-8") as f:
+            markdown_text = f.read().strip()
+    except Exception as exc:
+        print(f"[ERROR] {os.path.basename(markdown_path)} 읽기 실패: {exc}")
+        return True
+
+    if not markdown_text:
+        print(f"[ERROR] {os.path.basename(markdown_path)} 파일이 비어 있습니다.")
+        return True
+
+    user_args = (args or "").strip()
+    render_prompt = (
+        f"사용자가 '/{command}' 명령을 요청했습니다. 아래 markdown 문서를 기반으로 한국어로 안내하세요. "
+        "문서에 없는 기능을 추가하지 말고, 문서 내용을 간결하고 읽기 쉽게 정리해 답변하세요."
+    )
+    if user_args:
+        render_prompt += f"\n\n추가 사용자 입력: {user_args}"
+
+    render_prompt += f"\n\n[{os.path.basename(markdown_path)}]\n{markdown_text}"
+
+    try:
+        rendered = answer_chat(render_prompt, skills_md)
+        if (rendered or "").strip():
+            try:
+                if not _execute_python_from_text(rendered, command):
+                    print(rendered.strip())
+            except Exception as exec_err:
+                print(f"[ERROR] python 스크립트 실행 실패: {exec_err}")
+        else:
+            print(markdown_text)
+    except Exception:
+        print(markdown_text)
+
+    return True
+
+
+def _run_tools_dashboard_command(subcommand: str) -> str:
+    """tools/dashboard.py를 실행해 대시보드를 제어합니다."""
+    normalized = (subcommand or "").strip().lower()
+    action_map = {
+        "start": "launch",
+        "stop": "stop",
+        "status": "status",
+    }
+    action = action_map.get(normalized)
+    if not action:
+        return "❌ /dashboard 명령은 start | stop | status 중 하나를 사용하세요."
+
+    script_path = os.path.join(os.path.dirname(ROOT_DIR), "tools", "dashboard.py")
+    if not os.path.exists(script_path):
+        return f"[ERROR] 대시보드 런처를 찾을 수 없습니다: {script_path}"
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, script_path, action],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.path.dirname(ROOT_DIR),
+            check=False,
+        )
+    except Exception as exc:
+        return f"[ERROR] 대시보드 명령 실행 실패: {exc}"
+
+    output = (proc.stdout or "").strip()
+    if not output:
+        output = (proc.stderr or "").strip()
+
+    if not output:
+        return "[ERROR] 대시보드 명령 실행 결과가 비어 있습니다."
+
+    try:
+        data = json.loads(output)
+        if isinstance(data, dict):
+            message = str(data.get("message", "")).strip()
+            if message:
+                return message
+            return output
+    except Exception:
+        pass
+
+    return output
 
 
 def decide_action(user_prompt: str, skills_md: str) -> dict:
@@ -554,8 +796,85 @@ def autopilot(user_prompt: str):
     # 슬래시 명령어 처리 (최우선)
     command, args = _parse_slash_command(user_prompt)
     if command:
-        if command == "help":
-            print(_get_slash_commands_help())
+        if command == "post":
+            raw_args = (args or "").strip()
+            if not raw_args:
+                print("❌ /post 명령은 URL 또는 하위 명령어를 입력해주세요. 예: /post <URL>, /post search <키워드>, /post validate")
+                return
+
+            detected_url = _extract_first_url(raw_args)
+            if detected_url:
+                result = trigger_content_crawler_workflow(detected_url)
+                print(result)
+                return
+
+            parts = raw_args.split(maxsplit=1)
+            subcommand = parts[0].lower()
+            subargs = parts[1].strip() if len(parts) > 1 else ""
+
+            if subcommand == "search":
+                if not subargs:
+                    print("❌ /post search <키워드> 형식으로 입력해주세요.")
+                    return
+                keyword = _prepare_search_keyword(subargs)
+                if keyword:
+                    print(search_posts(keyword))
+                else:
+                    print("❌ 검색할 키워드를 입력해주세요.")
+                return
+
+            if subcommand == "validate":
+                print(validate_posts())
+                return
+
+            print("❌ /post 하위 명령은 search | validate 또는 URL 입력만 지원합니다.")
+            return
+
+        if command == "dashboard":
+            first_arg = (args.split()[0].strip().lower() if args.strip() else "")
+            if first_arg in {"start", "stop", "status"}:
+                print(_run_tools_dashboard_command(first_arg))
+                return
+
+        if command == "issue":
+            normalized_args = (args or "").strip()
+            if not normalized_args:
+                print("❌ 사용법: /issue create <내용> | /issue list | /issue history")
+                return
+
+            issue_parts = normalized_args.split(maxsplit=1)
+            issue_subcommand = issue_parts[0].strip().lower()
+            issue_payload = issue_parts[1].strip() if len(issue_parts) > 1 else ""
+
+            if issue_subcommand == "list":
+                print(list_open_github_issues())
+                return
+
+            if issue_subcommand == "history":
+                print(list_closed_github_issues())
+                return
+
+            if issue_subcommand == "create":
+                if not issue_payload:
+                    print("❌ 이슈 내용을 입력해주세요. 예: /issue create 대시보드 토큰 문제")
+                    return
+                print(create_github_issue_from_feedback(issue_payload))
+                return
+
+            # 하위 명령어를 생략한 경우 기존 동작과 호환되도록 바로 생성 시도
+            print(create_github_issue_from_feedback(normalized_args))
+            return
+
+        if command == "diary":
+            date_input = (args or "").strip()
+            if not date_input:
+                print("❌ 사용법: /diary YYYYMMDD 또는 /diary YYMMDD")
+                print("예: /diary 20260309 또는 /diary 260309")
+                return
+            print(find_post_by_date(date_input))
+            return
+
+        if _handle_markdown_command(command, args, skills_md):
             return
         elif command == "search":
             if not args:
@@ -563,20 +882,13 @@ def autopilot(user_prompt: str):
                 return
             keyword = _prepare_search_keyword(args)
             if keyword:
-                result = search_archive(keyword)
+                result = search_posts(keyword)
                 print(result)
             else:
                 print("❌ 검색할 키워드를 입력해주세요.")
             return
         elif command == "validate":
-            result = validate_archive()
-            print(result)
-            return
-        elif command == "issue":
-            if not args:
-                print("❌ 이슈 내용을 입력해주세요. 예: /issue 대시보드 토큰 문제")
-                return
-            result = create_github_issue_from_feedback(args)
+            result = validate_posts()
             print(result)
             return
         elif command in ["dashboard", "dashboard_start", "dashboard_launch"]:
@@ -610,7 +922,7 @@ def autopilot(user_prompt: str):
     if _has_search_intent(user_prompt):
         keyword = _prepare_search_keyword(user_prompt)
         if keyword:
-            result = search_archive(keyword)
+            result = search_posts(keyword)
             print(result)
         else:
             print("❌ 검색할 키워드를 입력해주세요.")
@@ -624,7 +936,7 @@ def autopilot(user_prompt: str):
     
     # 무결성 검증 의도 감지 시 즉시 실행
     if _has_validate_intent(user_prompt):
-        result = validate_archive()
+        result = validate_posts()
         print(result)
         return
     
@@ -685,14 +997,14 @@ def autopilot(user_prompt: str):
         base_query = decision.get("keyword") or user_prompt
         keyword = _prepare_search_keyword(base_query)
         if keyword:
-            result = search_archive(keyword)
+            result = search_posts(keyword)
             print(result)
         else:
             print("❌ 검색할 키워드를 입력해주세요.")
         return
     
     if action == "archive_validate":
-        result = validate_archive()
+        result = validate_posts()
         print(result)
         return
     

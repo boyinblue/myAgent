@@ -3,6 +3,7 @@ import os
 import logging
 import sys
 import json
+import asyncio
 import importlib
 import subprocess
 import tempfile
@@ -21,10 +22,14 @@ parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-# AI_Skills 디렉토리를 경로에 추가하여 autopilot 모듈을 직접 import
+# chatbot 디렉토리를 우선 경로에 추가 (이동된 스킬 모듈)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# AI_Skills 디렉토리는 하위 호환 fallback으로 유지
 ai_skills_dir = os.path.join(parent_dir, "AI_Skills")
 if ai_skills_dir not in sys.path:
-    sys.path.insert(0, ai_skills_dir)
+    sys.path.append(ai_skills_dir)
 
 try:
     # autopilot.py를 모듈로 직접 가져옴
@@ -34,31 +39,45 @@ except ImportError:
 
 
 def _reload_ai_skill_modules() -> bool:
-    """AI_Skills 모듈을 핫리로드하여 재시작 없이 최신 코드를 반영합니다."""
+    """스킬 모듈을 핫리로드하여 재시작 없이 최신 코드를 반영합니다."""
     global autopilot
 
     module_order = [
         "runtime_config",
         "shared_credentials",
-        "github_dispatch",
-        "archive_search",
-        "archive_validate",
-        "web_dashboard_launcher",
+        "issue",
+        "diary",
+        "post_search",
+        "post_validate",
+        "dashboard",
         "autopilot",
     ]
 
-    try:
-        for module_name in module_order:
+    missing_modules = []
+
+    for module_name in module_order:
+        try:
             if module_name in sys.modules:
                 importlib.reload(sys.modules[module_name])
             else:
                 importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            missing_modules.append(module_name)
+            continue
+        except Exception as exc:
+            logging.error(f"스킬 모듈 로드 실패({module_name}): {exc}")
+            if module_name == "autopilot":
+                return False
 
-        autopilot = sys.modules.get("autopilot")
-        return autopilot is not None
-    except Exception as exc:
-        logging.error(f"AI_Skills 핫리로드 실패: {exc}")
+    autopilot = sys.modules.get("autopilot")
+    if autopilot is None:
+        logging.error("autopilot 모듈 로드 실패")
         return False
+
+    if missing_modules:
+        logging.warning(f"선택 모듈 누락(동작 계속): {', '.join(missing_modules)}")
+
+    return True
 
 # 로그 설정 (FW 디버깅용 로그처럼)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -265,7 +284,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text=f"추론중...")
 
     if not _reload_ai_skill_modules() or autopilot is None:
-        await context.bot.send_message(chat_id=chat_id, text="❌ 내부 모듈 로드 실패: AI_Skills를 확인해주세요.")
+        await context.bot.send_message(chat_id=chat_id, text="❌ 내부 모듈 로드 실패: chatbot 스킬 모듈 경로를 확인해주세요.")
         _append_chatbot_log(
             event="reload_failed",
             chat_id=chat_id,
@@ -274,21 +293,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # 2. 다른 모듈의 함수를 실행하고 표준 출력을 가져오는 핵심 로직
-    f = io.StringIO()
-    try:
-        # redirect_stdout을 사용하여 해당 블록 내의 모든 print를 f에 저장
-        with redirect_stdout(f):
-            # 모듈 내부 함수 직접 호출
+    def _run_autopilot_capture(prompt: str) -> str:
+        f = io.StringIO()
+        try:
+            with redirect_stdout(f):
+                autopilot.autopilot(prompt)
+            return f.getvalue().strip()
+        finally:
+            f.close()
 
-            autopilot.autopilot(user_text)
-        
-        # 가로챈 출력 결과 가져오기
-        output = f.getvalue().strip()
+    # 2. 다른 모듈의 함수를 별도 스레드에서 실행하고 표준 출력을 가져옵니다.
+    try:
+        output = await asyncio.wait_for(
+            asyncio.to_thread(_run_autopilot_capture, user_text),
+            timeout=90,
+        )
 
         # 3. 결과 메시지 송신
         if output:
-            # 텔레그램 메시지 길이 제한(4096자)을 고려하여 슬라이싱 가능
             await context.bot.send_message(chat_id=chat_id, text=f"{output[:4000]}")
             _append_chatbot_log(
                 event="response_sent",
@@ -304,6 +326,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_text=user_text,
             )
 
+    except asyncio.TimeoutError:
+        timeout_msg = "⏱️ 추론 시간이 초과되었습니다. 더 짧게 요청하거나 /search, /validate 같은 슬래시 명령어를 사용해 주세요."
+        await context.bot.send_message(chat_id=chat_id, text=timeout_msg)
+        _append_chatbot_log(
+            event="inference_timeout",
+            chat_id=chat_id,
+            user_text=user_text,
+            error="autopilot_timeout_90s",
+        )
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ 에러 발생: {str(e)}")
         _append_chatbot_log(
@@ -312,8 +343,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_text=user_text,
             error=str(e),
         )
-    finally:
-        f.close()
 
 if __name__ == '__main__':
     if CURRENT_PYTHON.lower() != EXPECTED_VENV_PYTHON.lower():
@@ -337,7 +366,7 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     
     # 메시지를 받으면 handle_message 함수 실행
-    echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
+    echo_handler = MessageHandler(filters.TEXT, handle_message)
     application.add_handler(echo_handler)
     
     print("[*] 텔레그램 봇이 가동되었습니다.")
