@@ -145,6 +145,89 @@ def search_posts(keyword: str, limit: int = 10) -> str:
         return f"[ERROR] 검색 중 오류 발생: {e}"
 
 
+def search_random_posts(count: int = 3) -> str:
+    """아카이브 DB에서 랜덤 포스트를 반환합니다."""
+    if not _ARCHIVE_DB.exists():
+        return f"[ERROR] 아카이브 데이터베이스를 찾을 수 없습니다: {_ARCHIVE_DB}"
+
+    try:
+        conn = sqlite3.connect(_ARCHIVE_DB)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query = """
+        SELECT
+            title,
+            media_name,
+            url,
+            published_date,
+            keywords,
+            tags,
+            platform,
+            images
+        FROM posts
+        ORDER BY RANDOM()
+        LIMIT ?
+        """
+
+        cursor.execute(query, (count,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return "❌ 포스트가 없습니다."
+
+        results = [f"🎲 랜덤 포스트 ({len(rows)}건):\n"]
+
+        for idx, row in enumerate(rows, 1):
+            title = row["title"] or "제목 없음"
+            media_name = row["media_name"] or "미디어 미상"
+            url = row["url"] or ""
+            published = row["published_date"] or "날짜 미상"
+            platform = row["platform"] or "플랫폼 미상"
+            keywords = (row["keywords"] or "")[:100]
+            images_json = row["images"] or ""
+
+            # 첫 번째 이미지 URL 추출
+            thumbnail_url = ""
+            if images_json:
+                try:
+                    import json
+                    images_list = json.loads(images_json)
+                    if images_list and isinstance(images_list, list) and len(images_list) > 0:
+                        first_image = images_list[0]
+                        if isinstance(first_image, dict):
+                            thumbnail_url = first_image.get("url", "")
+                        elif isinstance(first_image, str):
+                            thumbnail_url = first_image
+                except Exception:
+                    pass
+
+            result_text = (
+                f"\n{idx}. {title}\n"
+                f"   📝 {media_name} | {platform}\n"
+                f"   📅 {published}\n"
+            )
+
+            if thumbnail_url:
+                result_text += f"   🖼️ {thumbnail_url}\n"
+
+            if keywords:
+                result_text += f"   🏷️ {keywords}\n"
+
+            if url:
+                result_text += f"   🔗 {url}\n"
+
+            results.append(result_text)
+
+        return "".join(results)
+
+    except sqlite3.Error as e:
+        return f"[ERROR] DB 조회 실패: {e}"
+    except Exception as e:
+        return f"[ERROR] 랜덤 포스트 조회 중 오류 발생: {e}"
+
+
 def search_archive(keyword: str, limit: int = 10) -> str:
     """하위 호환용 alias"""
     return search_posts(keyword, limit)

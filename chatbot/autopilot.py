@@ -4,6 +4,9 @@ import runpy
 import sys
 import re
 import subprocess
+import shutil
+import sqlite3
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
@@ -41,9 +44,12 @@ except Exception:
         return "[ERROR] diary 모듈을 찾을 수 없습니다."
 
 try:
-    from post_search import search_posts
+    from post_search import search_posts, search_random_posts
 except Exception:
     def search_posts(keyword: str, limit: int = 10) -> str:
+        return "[ERROR] post_search 모듈을 찾을 수 없습니다."
+    
+    def search_random_posts(count: int = 3) -> str:
         return "[ERROR] post_search 모듈을 찾을 수 없습니다."
 
 try:
@@ -529,18 +535,218 @@ def _parse_slash_command(text: str) -> tuple:
     return (command, args)
 
 
+def _get_command_help(command_name: str) -> str:
+    """특정 명령어에 대한 도움말을 반환합니다."""
+    help_texts = {
+        "post": """📌 /post 명령어
+
+사용법:
+  /post <키워드> - 포스트 검색
+  /post random - 랜덤 포스트 3개 출력
+  /post <URL> - URL을 아카이브에 추가
+  /post search <키워드> - 포스트 검색
+  /post validate - 포스트 무결성 검증
+
+예시:
+  /post 와인
+  /post random
+  /post https://blog.naver.com/...""",
+        
+        "diary": """📌 /diary 명령어
+
+사용법:
+  /diary <날짜> - 특정 날짜 근처의 포스트 조회
+
+형식:
+  YYYYMMDD 또는 YYMMDD
+
+예시:
+  /diary 20260309
+  /diary 260309""",
+        
+        "issue": """📌 /issue 명령어
+
+사용법:
+  /issue create <내용> - GitHub 이슈 등록
+  /issue list - 열린 이슈 목록
+  /issue history - 닫힌 이슈 목록
+
+예시:
+  /issue create 대시보드 토큰 문제
+  /issue list""",
+        
+        "search": """📌 /search 명령어
+
+사용법:
+  /search <키워드> - 포스트 검색
+
+예시:
+  /search 코스트코
+  /search python""",
+        
+        "health": """📌 /health 명령어
+
+사용법:
+  /health - 시스템 상태 확인
+
+표시 정보:
+  - 챗봇 실행 상태
+  - 대시보드 실행 상태
+  - 디스크 용량
+  - 포스트 개수""",
+        
+        "ver": """📌 /ver 명령어
+
+사용법:
+  /ver - 버전 정보 표시
+
+표시 정보:
+  - Python 버전
+  - Git 커밋 해시
+  - Git 브랜치
+  - 프로젝트 경로""",
+        
+        "restart": """📌 /restart 명령어
+
+사용법:
+  /restart - 챗봇 재시작
+
+주의: 재시작 중에는 메시지에 응답할 수 없습니다.""",
+        
+        "save": """📌 /save 명령어
+
+사용법:
+  /save - 변경사항 커밋 및 푸시
+
+기능: tools/git_auto_commit.py를 실행합니다.""",
+        
+        "dashboard": """📌 /dashboard 명령어
+
+사용법:
+  /dashboard start - 대시보드 시작
+  /dashboard stop - 대시보드 종료
+  /dashboard status - 대시보드 상태 확인""",
+    }
+    
+    normalized = command_name.lower().strip()
+    return help_texts.get(normalized, f"❌ '{command_name}' 명령어에 대한 도움말이 없습니다.\n\n{_get_slash_commands_help()}")
+
+
 def _get_slash_commands_help() -> str:
     """사용 가능한 슬래시 명령어 목록을 반환합니다."""
     return """📌 주요 슬래시 명령어:
 
 /post <키워드> - 포스트 검색
+/post random - 랜덤 포스트 3개
 /post <URL> - URL 아카이브에 추가
 /diary <날짜> - 날짜 근처 포스트 조회
 /issue create <내용> - 이슈 등록
 /search <키워드> - 검색
+/health - 시스템 상태 확인
+/ver - 버전 정보
 /restart - 챗봇 재시작
 /save - 변경사항 커밋
 /help - 명령어 목록"""
+
+
+def _get_health_status() -> str:
+    """챗봇 및 시스템 상태 정보를 반환합니다."""
+    lines = ["🏥 시스템 상태\n"]
+    
+    # 1. 챗봇 상태
+    lines.append("✅ 챗봇: 실행 중")
+    
+    # 2. 대시보드 상태
+    try:
+        script_path = os.path.join(PROJECT_ROOT, "tools", "dashboard.py")
+        if os.path.exists(script_path):
+            proc = subprocess.run(
+                [sys.executable, script_path, "status"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+                check=False,
+            )
+            dashboard_status = (proc.stdout or "").strip()
+            if "실행 중" in dashboard_status or "running" in dashboard_status.lower():
+                lines.append("✅ 대시보드: 실행 중")
+            else:
+                lines.append("⚪ 대시보드: 중지됨")
+        else:
+            lines.append("❓ 대시보드: 스크립트 없음")
+    except Exception:
+        lines.append("❓ 대시보드: 상태 확인 실패")
+    
+    # 3. 디스크 용량
+    try:
+        usage = shutil.disk_usage(PROJECT_ROOT)
+        total_gb = usage.total / (1024 ** 3)
+        used_gb = usage.used / (1024 ** 3)
+        free_gb = usage.free / (1024 ** 3)
+        percent = (usage.used / usage.total) * 100
+        lines.append(f"💾 디스크: {free_gb:.1f}GB 여유 (전체 {total_gb:.1f}GB, 사용률 {percent:.1f}%)")
+    except Exception as e:
+        lines.append(f"❌ 디스크: 조회 실패 ({e})")
+    
+    # 4. 포스트 개수
+    try:
+        db_path = Path(PROJECT_ROOT) / "archive" / "archive_index.db"
+        if db_path.exists():
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM posts")
+            post_count = cursor.fetchone()[0]
+            conn.close()
+            lines.append(f"📚 포스트: {post_count:,}개")
+        else:
+            lines.append("❓ 포스트: DB 파일 없음")
+    except Exception as e:
+        lines.append(f"❌ 포스트: 조회 실패 ({e})")
+    
+    return "\n".join(lines)
+
+
+def _get_version_info() -> str:
+    """버전 정보를 반환합니다."""
+    lines = ["ℹ️ 버전 정보\n"]
+    
+    # Python 버전
+    lines.append(f"🐍 Python: {sys.version.split()[0]}")
+    
+    # Git 커밋 정보
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=PROJECT_ROOT,
+            check=False,
+        )
+        if result.returncode == 0:
+            commit_hash = result.stdout.strip()
+            lines.append(f"📌 Git Commit: {commit_hash}")
+        
+        # Git 브랜치
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=PROJECT_ROOT,
+            check=False,
+        )
+        if result.returncode == 0:
+            branch = result.stdout.strip()
+            lines.append(f"🌿 Git Branch: {branch}")
+    except Exception:
+        lines.append("❓ Git: 정보 조회 실패")
+    
+    # 프로젝트 경로
+    lines.append(f"📂 Project: {PROJECT_ROOT}")
+    
+    return "\n".join(lines)
 
 
 def _load_help_markdown() -> str:
@@ -794,7 +1000,7 @@ def autopilot(user_prompt: str):
         if command == "post":
             raw_args = (args or "").strip()
             if not raw_args:
-                print("❌ /post 명령은 URL 또는 하위 명령어를 입력해주세요. 예: /post <URL>, /post search <키워드>, /post validate")
+                print("❌ /post 명령은 URL 또는 하위 명령어를 입력해주세요. 예: /post <URL>, /post search <키워드>, /post validate, /post random")
                 return
 
             detected_url = _extract_first_url(raw_args)
@@ -806,6 +1012,10 @@ def autopilot(user_prompt: str):
             parts = raw_args.split(maxsplit=1)
             subcommand = parts[0].lower()
             subargs = parts[1].strip() if len(parts) > 1 else ""
+
+            if subcommand == "random":
+                print(search_random_posts())
+                return
 
             if subcommand == "search":
                 if not subargs:
@@ -822,7 +1032,7 @@ def autopilot(user_prompt: str):
                 print(validate_posts())
                 return
 
-            # 서브커맨드가 search/validate가 아니면 전체를 검색어로 처리
+            # 서브커맨드가 search/validate/random이 아니면 전체를 검색어로 처리
             keyword = _prepare_search_keyword(raw_args)
             if keyword:
                 print(search_posts(keyword))
@@ -875,7 +1085,21 @@ def autopilot(user_prompt: str):
             return
 
         if command == "help":
-            print(_get_slash_commands_help())
+            query = (args or "").strip()
+            if query:
+                # /help 질의어 - 특정 명령어 도움말
+                print(_get_command_help(query))
+            else:
+                # /help - 전체 명령어 목록
+                print(_get_slash_commands_help())
+            return
+
+        if command == "health":
+            print(_get_health_status())
+            return
+
+        if command == "ver":
+            print(_get_version_info())
             return
 
         if _handle_markdown_command(command, args, skills_md):

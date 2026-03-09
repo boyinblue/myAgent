@@ -446,6 +446,23 @@ if __name__ == '__main__':
     application.add_handler(echo_handler)
     
     print("[*] 텔레그램 봇이 가동되었습니다.")
+    
+    # 봇 시작 시 텔레그램으로 알림 전송
+    async def send_startup_message():
+        try:
+            await application.bot.send_message(
+                chat_id=CHAT_ID,
+                text="✅ 챗봇이 시작되었습니다."
+            )
+        except Exception as e:
+            print(f"[!] 시작 메시지 전송 실패: {e}")
+    
+    # 이벤트 루프에서 시작 메시지 전송
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(send_startup_message())
+    
     try:
         application.run_polling()
     finally:
