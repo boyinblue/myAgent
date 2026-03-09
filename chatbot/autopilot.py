@@ -626,6 +626,31 @@ def _get_command_help(command_name: str) -> str:
   /dashboard start - 대시보드 시작
   /dashboard stop - 대시보드 종료
   /dashboard status - 대시보드 상태 확인""",
+
+        "gdrive": """📌 /gdrive 명령어
+
+사용법:
+  /gdrive - 구글 드라이브 파일/폴더 탐색
+
+사전 준비:
+  - 프로젝트 루트에 credentials.json 배치
+  - 서비스 계정에 드라이브 조회 권한 부여""",
+
+        "shell": """📌 $ 쉘 명령어
+
+사용법:
+  $<명령어> - 쉘 명령어 직접 실행
+
+예시:
+  $pip install requests
+  $python --version
+  $dir
+  $git status
+
+주의:
+  - 명령어는 프로젝트 루트에서 실행됩니다
+  - 타임아웃: 5분
+  - 위험한 명령어 실행 시 주의하세요""",
     }
     
     normalized = command_name.lower().strip()
@@ -644,9 +669,13 @@ def _get_slash_commands_help() -> str:
 /search <키워드> - 검색
 /health - 시스템 상태 확인
 /ver - 버전 정보
+/gdrive - 구글 드라이브 탐색
 /restart - 챗봇 재시작
 /save - 변경사항 커밋
-/help - 명령어 목록"""
+/help - 명령어 목록
+
+💻 쉘 명령어:
+$<명령어> - 쉘 명령어 직접 실행 (예: $pip install requests)"""
 
 
 def _get_health_status() -> str:
@@ -923,6 +952,48 @@ def _run_tools_dashboard_command(subcommand: str) -> str:
     return output
 
 
+def _run_gdrive_command() -> str:
+    """tools/gdrive.py를 실행해 구글 드라이브를 탐색합니다."""
+    script_path = os.path.join(PROJECT_ROOT, "tools", "gdrive.py")
+    if not os.path.exists(script_path):
+        return f"[ERROR] gdrive 스크립트를 찾을 수 없습니다: {script_path}"
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            cwd=PROJECT_ROOT,
+            check=False,
+        )
+    except Exception as exc:
+        return f"[ERROR] /gdrive 실행 실패: {exc}"
+
+    output = (proc.stdout or "").strip()
+    stderr_output = (proc.stderr or "").strip()
+    if not output:
+        output = stderr_output
+
+    if not output:
+        return "[ERROR] /gdrive 실행 결과가 비어 있습니다."
+
+    if "ModuleNotFoundError" in output and "google" in output:
+        return (
+            "❌ Google Drive 의존성 패키지가 설치되지 않았습니다.\n"
+            "다음 명령으로 설치하세요:\n"
+            "pip install google-api-python-client google-auth"
+        )
+
+    if "credentials.json" in output and "존재하지 않습니다" in output:
+        return (
+            "❌ credentials.json 파일이 없습니다.\n"
+            "프로젝트 루트에 서비스 계정 키 파일을 배치한 뒤 다시 시도하세요."
+        )
+
+    return output
+
+
 def decide_action(user_prompt: str, skills_md: str) -> dict:
     system_prompt = (
         "You are an autopilot router. "
@@ -994,6 +1065,44 @@ def autopilot(user_prompt: str):
     raw_skills_md = load_skills_markdown()
     skills_md = build_skills_context(raw_skills_md, get_skills_prompt_max_chars())
 
+    # $ 쉘 명령어 처리 (최우선)
+    if user_prompt.strip().startswith("$"):
+        shell_command = user_prompt.strip()[1:].strip()
+        if not shell_command:
+            print("❌ 실행할 명령어를 입력해주세요. 예: $pip install requests")
+            return
+        
+        print(f"🔧 쉘 명령어 실행 중: {shell_command}")
+        try:
+            proc = subprocess.run(
+                shell_command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=PROJECT_ROOT,
+                check=False,
+            )
+            
+            output = (proc.stdout or "").strip()
+            stderr = (proc.stderr or "").strip()
+            
+            if output:
+                print(output)
+            if stderr:
+                print(stderr)
+            
+            if proc.returncode != 0:
+                print(f"\n⚠️  명령어가 종료 코드 {proc.returncode}를 반환했습니다.")
+            else:
+                print("\n✅ 명령어 실행 완료")
+                
+        except subprocess.TimeoutExpired:
+            print("❌ 명령어 실행 시간 초과 (5분)")
+        except Exception as e:
+            print(f"❌ 명령어 실행 중 오류: {e}")
+        return
+
     # 슬래시 명령어 처리 (최우선)
     command, args = _parse_slash_command(user_prompt)
     if command:
@@ -1045,6 +1154,10 @@ def autopilot(user_prompt: str):
             if first_arg in {"start", "stop", "status"}:
                 print(_run_tools_dashboard_command(first_arg))
                 return
+
+        if command == "gdrive":
+            print(_run_gdrive_command())
+            return
 
         if command == "issue":
             normalized_args = (args or "").strip()

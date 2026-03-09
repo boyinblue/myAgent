@@ -11,3 +11,6 @@ __pycache__/
 
 # SQLite databases
 *.db-journal
+
+# Private archive data
+/archive_secret/
