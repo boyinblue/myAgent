@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse
+from dotenv import load_dotenv
 
 import requests
 
@@ -16,6 +17,9 @@ PROJECT_ROOT = os.path.dirname(ROOT_DIR)
 TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
+
+# Load environment variables
+load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
 
 try:
     from issue import (
@@ -1061,6 +1065,32 @@ def execute_script(script_path: str):
     runpy.run_path(script_path, run_name="__main__")
 
 
+def _send_telegram_message(message: str) -> bool:
+    """텔레그램으로 메시지를 전송합니다."""
+    try:
+        token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+        chat_id_raw = os.getenv('TELEGRAM_CHAT_ID', '').strip()
+        
+        if not token or not chat_id_raw:
+            return False
+        
+        chat_id = int(chat_id_raw) if chat_id_raw.isdigit() else 0
+        if not chat_id:
+            return False
+        
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = {
+            "chat_id": chat_id,
+            "text": message[:4096],  # 텔레그램 메시지 길이 제한
+            "parse_mode": "HTML"
+        }
+        
+        response = requests.post(url, json=data, timeout=10)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def autopilot(user_prompt: str):
     raw_skills_md = load_skills_markdown()
     skills_md = build_skills_context(raw_skills_md, get_skills_prompt_max_chars())
@@ -1073,6 +1103,9 @@ def autopilot(user_prompt: str):
             return
         
         print(f"🔧 쉘 명령어 실행 중: {shell_command}")
+        
+        telegram_msg_parts = [f"🔧 <b>쉘 명령어 실행</b>\n<code>{shell_command}</code>\n"]
+        
         try:
             proc = subprocess.run(
                 shell_command,
@@ -1089,18 +1122,38 @@ def autopilot(user_prompt: str):
             
             if output:
                 print(output)
+                # 텔레그램용 출력 (길이 제한)
+                output_preview = output[:1500] + "..." if len(output) > 1500 else output
+                telegram_msg_parts.append(f"\n<b>출력:</b>\n<pre>{output_preview}</pre>")
+            
             if stderr:
                 print(stderr)
+                stderr_preview = stderr[:1000] + "..." if len(stderr) > 1000 else stderr
+                telegram_msg_parts.append(f"\n<b>오류:</b>\n<pre>{stderr_preview}</pre>")
             
             if proc.returncode != 0:
-                print(f"\n⚠️  명령어가 종료 코드 {proc.returncode}를 반환했습니다.")
+                status_msg = f"\n⚠️  명령어가 종료 코드 {proc.returncode}를 반환했습니다."
+                print(status_msg)
+                telegram_msg_parts.append(f"\n⚠️ 종료 코드: {proc.returncode}")
             else:
-                print("\n✅ 명령어 실행 완료")
+                status_msg = "\n✅ 명령어 실행 완료"
+                print(status_msg)
+                telegram_msg_parts.append("\n✅ 실행 완료")
+            
+            # 텔레그램으로 결과 전송
+            telegram_msg = "".join(telegram_msg_parts)
+            _send_telegram_message(telegram_msg)
                 
         except subprocess.TimeoutExpired:
-            print("❌ 명령어 실행 시간 초과 (5분)")
+            error_msg = "❌ 명령어 실행 시간 초과 (5분)"
+            print(error_msg)
+            telegram_msg_parts.append(f"\n{error_msg}")
+            _send_telegram_message("".join(telegram_msg_parts))
         except Exception as e:
-            print(f"❌ 명령어 실행 중 오류: {e}")
+            error_msg = f"❌ 명령어 실행 중 오류: {e}"
+            print(error_msg)
+            telegram_msg_parts.append(f"\n{error_msg}")
+            _send_telegram_message("".join(telegram_msg_parts))
         return
 
     # 슬래시 명령어 처리 (최우선)
