@@ -9,6 +9,8 @@
 import json
 import os
 import sys
+import io
+import platform
 import argparse
 from urllib.parse import urlparse
 from datetime import datetime, timezone
@@ -561,6 +563,14 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Windows에서 UTF-8 이모지 출력을 위한 설정 (argparse 이후)
+    if platform.system() == 'Windows' and hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass  # UTF-8 reconfigure 실패해도 계속 진행
 
     print("=" * 60)
     print(f"콘텐츠 크롤러 v{CRAWLER_VERSION}")
