@@ -19,65 +19,73 @@ function IsProcessAlive {
     param([int]$ProcessId)
     try {
         $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-        return $null -ne $proc
-    } catch {
+        return ($null -ne $proc)
+    }
+    catch {
         return $false
     }
 }
 
 function RestartBot {
-    Log "🔄 봇 재시작 시도..."
+    Log "봇 재시작 시도..."
     
     # 기존 프로세스 종료
     if (Test-Path $lockFile) {
         $oldPid = Get-Content $lockFile -ErrorAction SilentlyContinue
-        $oldProc = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
-        if ($null -ne $oldProc) {
-            Log "  ❌ 종료: PID $oldPid"
-            Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
+        if ($oldPid) {
+            $oldProc = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
+            if ($null -ne $oldProc) {
+                Log "  PID $oldPid 종료"
+                Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            }
         }
     }
 
     # 새 프로세스 시작
     try {
         Start-Job -ScriptBlock {
-            param($python, $script)
-            Set-Location 'C:\Users\user\Documents\Porjects\myAgent'
+            param($python, $script, $root)
+            Set-Location $root
             & $python $script
-        } -ArgumentList $venvPython, $botScript | Out-Null
-        Log "  ✅ 봇 시작됨"
+        } -ArgumentList $venvPython, $botScript, $projectRoot -ErrorAction Stop | Out-Null
+        
+        Log "  봇 시작됨"
         return $true
-    } catch {
-        Log "  ❌ 시작 실패: $_"
+    }
+    catch {
+        Log "  시작 실패: $_"
         return $false
     }
 }
 
-Log "=== Bot Auto-Restart Daemon 시작 ==="
-Log "Check interval: 60초"
+Log "================================"
+Log "Bot Auto-Restart Daemon Start"
+Log "================================"
 
 # 메인 루프
 while ($true) {
     Start-Sleep -Seconds 60
     
     if (-not (Test-Path $lockFile)) {
-        Log "⚠️  Lock file 없음 - 봇 시작"
+        Log "Lock file 없음 - 재시작"
         RestartBot | Out-Null
         continue
     }
 
     $botPid = Get-Content $lockFile -ErrorAction SilentlyContinue
     if (-not $botPid) {
-        Log "⚠️  Lock file 비어있음 - 봇 시작"
+        Log "Lock file 비어있음 - 재시작"
         RestartBot | Out-Null
         continue
     }
 
     if (-not (IsProcessAlive $botPid)) {
-        Log "💀 PID $botPid 프로세스 종료됨 - 재시작 중"
+        Log "PID $botPid 프로세스 죽음 - 재시작"
         RestartBot | Out-Null
-    } else {
-        Log "✅ 봇 정상 (PID: $botPid)"
+    }
+    else {
+        Log "Bot OK (PID: $botPid)"
     }
 }
+
