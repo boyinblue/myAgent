@@ -637,8 +637,13 @@ def _get_command_help(command_name: str) -> str:
   /gdrive - 구글 드라이브 파일/폴더 탐색
 
 사전 준비:
-  - 프로젝트 루트에 credentials.json 배치
-  - 서비스 계정에 드라이브 조회 권한 부여""",
+  1. GDRIVE_SETUP.md 문서 참고
+  2. Google Cloud Console에서 서비스 계정 JSON 키 생성
+  3. 프로젝트 루트에 credentials.json으로 저장
+  
+⚠️  주의:
+  - 'OAuth 2.0 Desktop' 앱이 아닌 '서비스 계정' 타입이어야 합니다
+  - google-api-python-client, google-auth 패키지 필요""",
 
         "shell": """📌 $ 쉘 명령어
 
@@ -993,10 +998,14 @@ def _run_gdrive_command() -> str:
             "pip install google-api-python-client google-auth"
         )
 
-    if "credentials.json" in output and "존재하지 않습니다" in output:
+    if "credentials.json" in output and ("설정이 필요합니다" in output or "존재하지 않습니다" in output):
         return (
             "❌ credentials.json 파일이 없습니다.\n"
-            "프로젝트 루트에 서비스 계정 키 파일을 배치한 뒤 다시 시도하세요."
+            "Google Drive API 설정 가이드를 참고하세요:\n"
+            "1. GDRIVE_SETUP.md 문서 확인\n"
+            "2. Google Cloud Console에서 서비스 계정 키 다운로드\n"
+            "3. 파일을 credentials.json으로 프로젝트 루트에 저장\n"
+            "자세한 내용은 /help gdrive를 입력하세요."
         )
 
     return output
