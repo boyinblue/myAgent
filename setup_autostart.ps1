@@ -53,19 +53,37 @@ function Register-ServiceTask {
 }
 
 # ─────────────────────────────────────────────
-# 1. 텔레그램 봇 자동 시작
+# 1. 텔레그램 봇 자동 시작 (auto-restart 래퍼 사용)
 # ─────────────────────────────────────────────
 Write-Host ""
 Write-Host "=== 텔레그램 봇 자동 시작 등록 ===" -ForegroundColor Cyan
 
-$botScript = Join-Path $projectRoot 'chatbot\telegram_bot.py'
-$botLog    = Join-Path $env:LOCALAPPDATA 'myAgent\chatbot_logs\autostart_bot.log'
+$botLog = Join-Path $env:LOCALAPPDATA 'myAgent\chatbot_logs\autostart_bot.log'
+$botLogDir = Split-Path $botLog -Parent
+if (-not (Test-Path $botLogDir)) { New-Item -ItemType Directory -Path $botLogDir -Force | Out-Null }
 
-Register-ServiceTask `
-    -TaskName    "myAgent_TelegramBot" `
-    -Description "myAgent 텔레그램 봇 (로그인 시 자동 시작)" `
-    -PythonScript $botScript `
-    -LogFile $botLog
+Unregister-ScheduledTask -TaskName "myAgent_TelegramBot" -Confirm:$false -ErrorAction SilentlyContinue
+
+$botAction = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument "-ExecutionPolicy RemoteSigned -NonInteractive -File `"$(Join-Path $projectRoot 'start_bot_auto_restart.ps1')`" >> `"$botLog`" 2>&1" `
+    -WorkingDirectory $projectRoot
+
+$botTrigger  = New-ScheduledTaskTrigger -AtLogOn
+$botSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+    -MultipleInstances IgnoreNew
+$botPrincipal = New-ScheduledTaskPrincipal `
+    -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
+    -LogonType Interactive -RunLevel Limited
+
+Register-ScheduledTask `
+    -TaskName   "myAgent_TelegramBot" `
+    -Description "myAgent 텔레그램 봇 (로그인 시 자동 시작, auto-restart 포함)" `
+    -Action $botAction -Trigger $botTrigger -Settings $botSettings -Principal $botPrincipal `
+    -Force | Out-Null
+
+Write-Host "  [OK] 태스크 등록: myAgent_TelegramBot" -ForegroundColor Green
 
 # ─────────────────────────────────────────────
 # 2. 웹 대시보드 자동 시작
@@ -83,6 +101,27 @@ Register-ServiceTask `
     -LogFile $dashLog
 
 # ─────────────────────────────────────────────
+# 3. Content Crawler 일일 스케줄 실행
+# ─────────────────────────────────────────────
+Write-Host ""
+Write-Host "=== Content Crawler 스케줄 등록 ===" -ForegroundColor Cyan
+
+$crawlerScript = Join-Path $projectRoot 'content-crawler\main.py'
+$crawlerLog    = Join-Path $env:LOCALAPPDATA 'myAgent\crawler_logs\autostart_crawler.log'
+
+Register-ServiceTask `
+    -TaskName    "myAgent_Crawler" `
+    -Description "myAgent 콘텐츠 크롤러 (매일 08:00 실행)" `
+    -PythonScript "$crawlerScript --schedule" `
+    -LogFile $crawlerLog
+
+# 트리거를 로그온이 아닌 매일 08:00으로 변경
+$crawlerTrigger = New-ScheduledTaskTrigger -Daily -At "08:00"
+Set-ScheduledTask -TaskName "myAgent_Crawler" -Trigger $crawlerTrigger | Out-Null
+
+Write-Host "  [OK] 태스크 등록: myAgent_Crawler (매일 08:00)" -ForegroundColor Green
+
+# ─────────────────────────────────────────────
 # 등록 결과 확인
 # ─────────────────────────────────────────────
 Write-Host ""
@@ -94,7 +133,9 @@ Write-Host "완료! 다음 번 로그인부터 자동으로 시작됩니다." -F
 Write-Host "지금 바로 시작하려면:" -ForegroundColor Yellow
 Write-Host "  Start-ScheduledTask -TaskName 'myAgent_TelegramBot'" -ForegroundColor White
 Write-Host "  Start-ScheduledTask -TaskName 'myAgent_WebDashboard'" -ForegroundColor White
+Write-Host "  Start-ScheduledTask -TaskName 'myAgent_Crawler'  # 크롤러는 매일 08:00 자동 실행" -ForegroundColor White
 Write-Host ""
 Write-Host "태스크를 제거하려면:" -ForegroundColor Yellow
 Write-Host "  Unregister-ScheduledTask -TaskName 'myAgent_TelegramBot' -Confirm:`$false" -ForegroundColor White
 Write-Host "  Unregister-ScheduledTask -TaskName 'myAgent_WebDashboard' -Confirm:`$false" -ForegroundColor White
+Write-Host "  Unregister-ScheduledTask -TaskName 'myAgent_Crawler' -Confirm:`$false" -ForegroundColor White
