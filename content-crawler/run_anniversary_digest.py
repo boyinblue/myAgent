@@ -29,9 +29,8 @@ def main():
         sys.exit(1)
 
     notifier = TelegramNotifier(TELEGRAM_BOT_TOKEN)
-    messages = finder.format_anniversary_message(posts)
-
     posts = finder.find_anniversary_posts([1, 7, 30, 365])
+    messages = finder.format_anniversary_message(posts)
     
     if posts:
         # Send digest via Telegram
