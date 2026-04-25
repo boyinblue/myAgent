@@ -541,6 +541,55 @@ def api_trigger_crawl():
     except Exception as e:
         return jsonify({'error': str(e), 'detail': getattr(e, 'response', None) and e.response.text}), 500
 
+
+@app.route('/api/crawl-status')
+def api_crawl_status():
+    """현재 크롤링 워크플로 실행 상태 조회"""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    import requests
+
+    github_token = os.getenv('GITHUB_TOKEN')
+    repo = os.getenv('GITHUB_REPOSITORY', 'boyinblue/myAgent')
+    workflow = 'run_crowler.yml'
+
+    if not github_token:
+        return jsonify({'configured': False, 'running': False, 'message': 'GitHub token not configured'})
+
+    api_url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=1'
+    headers = {
+        'Authorization': f'token {github_token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        resp = requests.get(api_url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        runs = resp.json().get('workflow_runs', [])
+
+        if not runs:
+            return jsonify({'configured': True, 'running': False, 'message': '실행 이력이 없습니다.'})
+
+        run = runs[0]
+        status = run.get('status', '')
+        conclusion = run.get('conclusion')
+        running = status in ('queued', 'in_progress', 'waiting', 'pending', 'requested')
+
+        return jsonify({
+            'configured': True,
+            'running': running,
+            'status': status,
+            'conclusion': conclusion,
+            'workflow_name': run.get('name', workflow),
+            'html_url': run.get('html_url', ''),
+            'created_at': run.get('created_at', ''),
+            'updated_at': run.get('updated_at', ''),
+            'message': '크롤링이 실행 중입니다.' if running else '현재 실행 중인 크롤링이 없습니다.',
+        })
+    except Exception as e:
+        return jsonify({'configured': True, 'running': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     # 개발 환경에서는 직접 실행
     app.run(host='0.0.0.0', port=5000, debug=True)
