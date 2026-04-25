@@ -23,3 +23,7 @@ token.pickle
 
 # Temp files
 temp/
+
+# Crawler raw output and logs
+content-crawler/raw/
+crawler_output.log

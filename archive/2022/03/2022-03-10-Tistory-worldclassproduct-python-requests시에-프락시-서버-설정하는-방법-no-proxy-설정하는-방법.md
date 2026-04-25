@@ -1,0 +1,18 @@
+---
+title: "[python] requests시에 프락시 서버 설정하는 방법 + no proxy 설정하는 방법"
+url: "https://worldclassproduct.tistory.com/entry/python-requests%EC%8B%9C%EC%97%90-%ED%94%84%EB%9D%BD%EC%8B%9C-%EC%84%9C%EB%B2%84-%EC%84%A4%EC%A0%95%ED%95%98%EB%8A%94-%EB%B0%A9%EB%B2%95-no-proxy-%EC%84%A4%EC%A0%95%ED%95%98%EB%8A%94-%EB%B0%A9%EB%B2%95"
+platform: "Tistory"
+media_name: "worldclassproduct"
+created_at: "2022-03-10T13:20:12+09:00"
+event_dates:
+category: ""
+tags:
+comments: ""
+keywords:
+crawler_version: "2.2"
+images:
+---
+
+# [python] requests시에 프락시 서버 설정하는 방법 + no proxy 설정하는 방법
+
+(본문 없음)
