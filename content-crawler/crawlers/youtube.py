@@ -22,7 +22,7 @@ GOOGLE_KEY = os.getenv("GOOGLE_API_KEY")
 class YouTubeCrawler:
     """유튜브 채널의 영상을 크롤링합니다."""
 
-    def __init__(self, channel_id: Optional[str] = None, channel_url: Optional[str] = None, request_interval: float = 1.0, archive_mgr=None):
+    def __init__(self, channel_id: Optional[str] = None, channel_url: Optional[str] = None, request_interval: float = 1.0, archive_mgr=None, crawler_version: str = ""):
         """
         Args:
             channel_id: 채널 ID (예: UCxxx...) - 이 방식이 가장 안정적
@@ -35,6 +35,7 @@ class YouTubeCrawler:
         self.channel_url = channel_url
         self.request_interval = request_interval
         self.archive_mgr = archive_mgr
+        self.crawler_version = crawler_version
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
@@ -186,6 +187,9 @@ class YouTubeCrawler:
         for entry in entries:
             # 유튜브 RSS의 항목 분석
             video_url = entry.get("link", "")
+            if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(video_url, self.crawler_version):
+                continue
+
             video_id = None
             if "v=" in video_url:
                 video_id = video_url.split("v=")[-1].split("&")[0]
@@ -224,10 +228,14 @@ class YouTubeCrawler:
             print(f"[*] API 호출 성공: {len(data.get('items', []))}개의 영상을 찾았습니다.")
 
             for item in data.get("items", []):
+                video_url = f"https://youtu.be/{item['id']['videoId']}"
+                if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(video_url, self.crawler_version):
+                    continue
+
                 video = {
                     "title": item["snippet"]["title"],
                     "published": item["snippet"]["publishedAt"],
-                    "link": f"https://youtu.be/{item['id']['videoId']}",
+                    "link": video_url,
                     "video_id": item["id"]["videoId"],
                     "summary": item["snippet"].get("description", ""),
                     "author": item["snippet"].get("channelTitle", ""),

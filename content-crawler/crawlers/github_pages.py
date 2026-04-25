@@ -14,7 +14,7 @@ import archive_manager
 class GitHubPagesCrawler:
     """GitHub Pages와 유사한 정적 사이트의 블로그 포스트를 크롤링합니다."""
 
-    def __init__(self, blog_url: str, request_interval: float = 1.0, archive_mgr=None):
+    def __init__(self, blog_url: str, request_interval: float = 1.0, archive_mgr=None, crawler_version: str = ""):
         """
         Args:
             blog_url: 블로그 기본 주소 (예: https://boyinblue.github.io)
@@ -23,6 +23,8 @@ class GitHubPagesCrawler:
         """
         self.blog_url = blog_url.rstrip("/")
         self.request_interval = request_interval
+        self.archive_mgr = archive_mgr
+        self.crawler_version = crawler_version
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
@@ -72,6 +74,9 @@ class GitHubPagesCrawler:
 
                     # 외부 링크 제외
                     if not href.startswith(self.blog_url):
+                        continue
+
+                    if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(href, self.crawler_version):
                         continue
 
                     title = link.get_text(strip=True)

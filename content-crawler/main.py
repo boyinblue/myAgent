@@ -294,6 +294,23 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
             # raw_html 준비 (있으면 html 저장)
             raw_html = post.get("html") or ""
 
+            if is_private_post:
+                # 비공개 글은 파일을 생성하지 않고 DB에만 유지합니다.
+                archive_mgr.upsert_private_post(
+                    title=title,
+                    url=link,
+                    platform_type=platform_type,
+                    media_name=media_name,
+                    created_at=published,
+                    tags=tags,
+                    comments=comments,
+                    crawler_version=CRAWLER_VERSION,
+                    images=images,
+                )
+                archived_count += 1
+                post["new"] = True
+                continue
+
             # 마크다운 생성 및 저장 (create_markdown_file 사용)
             archive_mgr.create_markdown_file(
                 title=title,

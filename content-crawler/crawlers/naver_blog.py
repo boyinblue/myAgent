@@ -12,7 +12,7 @@ import urllib.request
 import urllib.parse
 import json
 from typing import Dict, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 import random
 from collections import deque
@@ -34,6 +34,7 @@ class NaverBlogCrawler:
         rss_url: str = None,
         request_interval: float = 1.0,
         archive_mgr=None,
+        crawler_version: str = "",
         request_interval_min: float = None,
         request_interval_max: float = None,
     ):
@@ -46,6 +47,7 @@ class NaverBlogCrawler:
         """
         self.blog_id = blog_id
         self.archive_mgr = archive_mgr
+        self.crawler_version = crawler_version
         # Naver RSS URL. 변경될 수 있으므로 옵션 허용.
         if rss_url:
             self.rss_url = rss_url
@@ -60,6 +62,10 @@ class NaverBlogCrawler:
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
+        naver_cookie = os.getenv("NAVER_COOKIE", "").strip()
+        if naver_cookie:
+            # 로그인/이웃공개 글 접근이 필요한 경우 환경변수 쿠키를 사용합니다.
+            self.headers["Cookie"] = naver_cookie
 
     def _sleep_with_jitter(self):
         delay = random.uniform(self.request_interval_min, self.request_interval_max)
@@ -204,10 +210,14 @@ class NaverBlogCrawler:
         entries = feed.entries[:max_posts] if max_posts else feed.entries
 
         for idx, entry in enumerate(entries):
+            link = self._normalize_naver_post_url(entry.get("link", ""))
+            if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(link, self.crawler_version):
+                continue
+
             post = {
                 "title": entry.get("title", "제목 없음"),
                 "published": entry.get("published", ""),
-                "link": entry.get("link", ""),
+                "link": link,
                 "summary": entry.get("summary", ""),
                 "category": entry.get("category", ""),
             }
@@ -223,6 +233,20 @@ class NaverBlogCrawler:
     def parse_url(self, url, respect_robots: bool = True):
         """단일 URL을 파싱하여 포스트 정보를 리턴합니다."""
         print(f"[*] {url}에서 포스트 정보 추출 중...")
+
+        def _normalize_published_date(raw_text: str) -> str:
+            value = (raw_text or "").strip()
+            if not value:
+                return ""
+
+            for fmt in ("%Y. %m. %d. %H:%M", "%Y. %m. %d. %H:%M:%S", "%Y. %m. %d."):
+                try:
+                    dt = datetime.strptime(value, fmt)
+                    return dt.replace(tzinfo=timezone(timedelta(hours=9))).isoformat()
+                except ValueError:
+                    continue
+
+            return value
 
         try:
             normalized_url = self._normalize_naver_post_url(url)
@@ -256,6 +280,50 @@ class NaverBlogCrawler:
             else:
                 title = soup.title.string.strip() if soup.title and soup.title.string else "제목 없음"
             print(f"제목: {title}")
+
+            published = ""
+            blog_date = soup.select_one("p.blog_date")
+            if blog_date:
+                published = _normalize_published_date(blog_date.get_text(" ", strip=True))
+
+            if not published:
+                post_property = soup.select_one("#_post_property")
+                add_date = ""
+                if post_property:
+                    # BeautifulSoup normalizes HTML attribute names to lowercase.
+                    add_date = (
+                        post_property.get("addDate")
+                        or post_property.get("adddate")
+                        or post_property.attrs.get("adddate")
+                        or ""
+                    )
+                if add_date and add_date.isdigit():
+                    published = datetime.fromtimestamp(
+                        int(add_date) / 1000,
+                        timezone(timedelta(hours=9)),
+                    ).isoformat()
+
+            summary = ""
+            og_description = soup.find("meta", attrs={"property": "og:description"})
+            if og_description and og_description.get("content"):
+                summary = og_description.get("content").strip()
+
+            content_html = ""
+            content_text = ""
+            content_container = soup.select_one("div.se-main-container")
+            if content_container is None:
+                content_container = soup.select_one("div.post_ct")
+            if content_container is not None:
+                content_html = str(content_container)
+                content_text = content_container.get_text("\n", strip=True)
+
+            if not content_text:
+                content_text = summary
+
+            if not content_html and not published:
+                print(f"[i] 본문/작성일을 확인할 수 없어 비공개 글로 표시합니다: {url}")
+                content_text = "(비공개 글) 본문 비공개 또는 접근 권한이 없습니다."
+                summary = summary or "비공개 글(접근 제한)"
 
             # 내부 포스트 링크만 추출 (크롤링 가능한 링크)
             links = []
@@ -292,6 +360,12 @@ class NaverBlogCrawler:
             post = {
                 "title": title,
                 "link": url,
+                "published": published,
+                "summary": summary,
+                "content": content_text,
+                "html": content_html,
+                "tags": ["__private__", "private"],
+                "comments": "[system] 네이버 모바일 응답에서 본문/작성일 누락으로 비공개 글로 분류됨",
                 "platform": "NaverBlog",
                 "media_name": self.blog_id,
                 "resolved_url": normalized_url,
@@ -360,6 +434,10 @@ class NaverBlogCrawler:
                 print(f"[i] robots.txt 정책으로 건너뜀: {current_url}")
                 continue
 
+            if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(current_url, self.crawler_version):
+                print(f"[i] 동일 버전으로 이미 처리됨, 건너뜁니다: {current_url}")
+                continue
+
             post = self.parse_url(current_url, respect_robots=respect_robots)
             if post:
                 discovered.append(post)
@@ -405,10 +483,14 @@ class NaverBlogCrawler:
                         # 링크가 블로그 글인지 확인 (네이버 블로그 글은 'blog.naver.com' 포함)
                         print(f"Checking link: {item.get('link', '')}")
                         if f'blog.naver.com/{self.blog_id}' in item.get('link', ''):
+                            normalized_link = self._normalize_naver_post_url(item.get('link', ''))
+                            if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(normalized_link, self.crawler_version):
+                                continue
+
                             results.append({
                                 "title": item.get("title", "제목 없음"),
                                 "published": item.get("postdate", ""),
-                                "link": item.get("link", ""),
+                                "link": normalized_link,
                                 "summary": item.get("description", ""),
                             })
                         
@@ -478,6 +560,8 @@ class NaverBlogCrawler:
             post["link"] = link
             dedup[link] = post
         posts = list(dedup.values())
+        if self.archive_mgr and self.crawler_version:
+            posts = [post for post in posts if not self.archive_mgr.should_skip_crawl(post.get("link", ""), self.crawler_version)]
 
         if follow_internal_links:
             seed_urls = [p.get("link", "") for p in posts if p.get("link")]

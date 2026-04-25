@@ -391,6 +391,104 @@ class ArchiveManager:
 
         return False
 
+    def should_skip_crawl(self, url: str, crawler_version: str) -> bool:
+        """같은 크롤러 버전으로 이미 처리된 URL이면 재크롤링을 건너뜁니다."""
+        normalized_url = self._normalize_url(url)
+        sql = """
+            SELECT title, platform, media_name, crawler_version, images, tags
+            FROM posts
+            WHERE url = ?
+            LIMIT 1
+        """
+
+        try:
+            self.cur.execute(sql, (normalized_url,))
+            row = self.cur.fetchone()
+        except sqlite3.Error as e:
+            print(f"❌ 크롤링 스킵 여부 조회 에러: {e}")
+            return False
+
+        if row is None:
+            return False
+
+        record = dict(row)
+        is_complete = bool(record.get("title") and record.get("platform") and record.get("media_name"))
+        if not is_complete:
+            return False
+
+        existing_version = (record.get("crawler_version") or "").strip()
+        if not existing_version or existing_version != (crawler_version or "").strip():
+            return False
+
+        tags_raw = record.get("tags")
+        if tags_raw:
+            parsed_tags = []
+            try:
+                parsed_tags = json.loads(tags_raw) if isinstance(tags_raw, str) else list(tags_raw)
+            except Exception:
+                parsed_tags = [str(tags_raw)]
+
+            normalized_tags = {str(tag).strip().lower() for tag in parsed_tags if str(tag).strip()}
+            if "__private__" in normalized_tags or "private" in normalized_tags:
+                return True
+
+        images_raw = record.get("images")
+        if not images_raw:
+            return False
+
+        try:
+            parsed_images = json.loads(images_raw) if isinstance(images_raw, str) else images_raw
+        except Exception:
+            parsed_images = images_raw
+
+        if isinstance(parsed_images, list):
+            for entry in parsed_images:
+                if isinstance(entry, dict) and (entry.get("url") or "").strip():
+                    return True
+                if isinstance(entry, str) and entry.strip():
+                    return True
+            return False
+
+        return bool(str(parsed_images).strip())
+
+    def needs_rearchive(self, url: str, title: str, platform_type: str, media_name: str, created_at: str) -> bool:
+        """기존 레코드의 파일 경로나 날짜가 현재 메타데이터와 다르면 True를 반환합니다."""
+        normalized_url = self._normalize_url(url)
+
+        try:
+            row = self.cur.execute(
+                "SELECT file_path, created_at FROM posts WHERE url = ? LIMIT 1",
+                (normalized_url,),
+            ).fetchone()
+        except sqlite3.Error as e:
+            print(f"❌ 재아카이브 필요 여부 조회 에러: {e}")
+            return False
+
+        if row is None:
+            return False
+
+        existing_created_at = (row["created_at"] or "").strip()
+        existing_file_path = (row["file_path"] or "").strip()
+
+        try:
+            year, month, day = self._slugify_created_date(created_at)
+            expected_dir = self.get_archive_path(year, month)
+            expected_name = self.generate_filename(year, month, day, platform_type, media_name, title)
+            expected_path = str(Path(expected_dir) / expected_name)
+        except Exception:
+            return False
+
+        if not existing_file_path:
+            return True
+
+        existing_path = str(Path(existing_file_path).resolve()) if existing_file_path else ""
+        expected_path = str(Path(expected_path).resolve())
+
+        if existing_path != expected_path:
+            return True
+
+        return existing_created_at != (created_at or "").strip()
+
     def has_representative_image(self, url: str) -> bool:
         """URL 레코드에 유효한 대표 이미지(첫 이미지 URL + 접근 가능)가 있는지 확인합니다."""
         url = self._normalize_url(url)
@@ -517,6 +615,52 @@ class ArchiveManager:
         self.cur.execute(sql)
         return self.cur.fetchall()
 
+    def backfill_crawler_versions(self) -> int:
+        """기존 마크다운 frontmatter의 crawler_version을 DB로 역채웁니다."""
+        rows = self.cur.execute(
+            '''
+                SELECT id, file_path
+                FROM posts
+                WHERE crawler_version IS NULL OR crawler_version = ''
+            '''
+        ).fetchall()
+
+        updated = 0
+        for row in rows:
+            file_path = row["file_path"]
+            if not file_path:
+                continue
+
+            path_candidates = [Path(file_path)]
+            if not Path(file_path).is_absolute():
+                project_root = Path(self.archive_root).parent
+                normalized_path = file_path.lstrip("./\\")
+                path_candidates.extend([
+                    Path(self.archive_root) / file_path,
+                    project_root / file_path,
+                    project_root / normalized_path,
+                ])
+
+            path_obj = next((candidate for candidate in path_candidates if candidate.exists()), None)
+            if path_obj is None:
+                continue
+
+            frontmatter = self._extract_frontmatter(path_obj) or {}
+            crawler_version = (frontmatter.get("crawler_version") or "").strip()
+            if not crawler_version:
+                continue
+
+            self.cur.execute(
+                "UPDATE posts SET crawler_version = ? WHERE id = ?",
+                (crawler_version, row["id"]),
+            )
+            updated += 1
+
+        if updated:
+            self.conn.commit()
+
+        return updated
+
     def lint_data(self):
         """누락되거나 부실한 데이터를 리스트업합니다."""
         incomplete = self.get_incomplete_posts()
@@ -622,6 +766,16 @@ class ArchiveManager:
                     date_obj = datetime.strptime(clean_date, "%Y-%m-%d")
                 except:
                     pass
+
+            # 2-1. 네이버 모바일 본문 날짜 형식 (예: 2024. 9. 25. 10:39)
+            if not date_obj:
+                normalized = (created_date or "").strip()
+                for fmt in ("%Y. %m. %d. %H:%M", "%Y. %m. %d. %H:%M:%S", "%Y. %m. %d."):
+                    try:
+                        date_obj = datetime.strptime(normalized, fmt)
+                        break
+                    except:
+                        pass
 
         # 3. 파싱 실패 시 현재 시간 (UTC)
         if not date_obj:
@@ -766,10 +920,12 @@ class ArchiveManager:
             # images를 JSON 문자열로 변환
             import json
             images_json = json.dumps(safe_images, ensure_ascii=False) if safe_images else ""
+            tags_json = json.dumps(safe_tags, ensure_ascii=False) if safe_tags else "[]"
+            comment_text = comments or ""
             
             self.cur.execute('''
-                INSERT INTO posts (url, title, platform, media_name, created_at, file_path, images, db_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO posts (url, title, platform, media_name, created_at, file_path, images, tags, comment, crawler_version, db_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(url) DO UPDATE SET
                     title=excluded.title,
                     platform=excluded.platform,
@@ -777,8 +933,11 @@ class ArchiveManager:
                     created_at=excluded.created_at,
                     file_path=excluded.file_path,
                     images=excluded.images,
+                    tags=excluded.tags,
+                    comment=excluded.comment,
+                    crawler_version=excluded.crawler_version,
                     db_updated_at=CURRENT_TIMESTAMP
-            ''', (url, title, platform_type, media_name, created_at, filepath, images_json))
+            ''', (url, title, platform_type, media_name, created_at, filepath, images_json, tags_json, comment_text, crawler_version))
             self.conn.commit()
             # 저장된 ID 가져오기
             result = self.cur.execute('SELECT id FROM posts WHERE url = ?', (url,)).fetchone()
@@ -789,6 +948,65 @@ class ArchiveManager:
             print(f"[!] DB 저장 실패: {e}")
 
         return filepath
+
+    def upsert_private_post(
+        self,
+        title: str,
+        url: str,
+        platform_type: str,
+        media_name: str,
+        created_at: str = "",
+        tags: List[str] = None,
+        comments: str = "",
+        crawler_version: str = "",
+        images: List[Dict] = None,
+    ) -> None:
+        """비공개 글을 마크다운 없이 DB에만 저장/갱신합니다."""
+        normalized_url = self._normalize_url(url)
+        safe_tags = self._ensure_list(tags)
+        normalized_tags = {str(tag).strip().lower() for tag in safe_tags if str(tag).strip()}
+        if "__private__" not in normalized_tags:
+            safe_tags.append("__private__")
+        if "private" not in normalized_tags:
+            safe_tags.append("private")
+
+        safe_images = [img for img in self._ensure_list(images) if img is not None]
+        tags_json = json.dumps(safe_tags, ensure_ascii=False)
+        images_json = json.dumps(safe_images, ensure_ascii=False) if safe_images else ""
+
+        try:
+            self.cur.execute(
+                '''
+                    INSERT INTO posts (url, title, platform, media_name, created_at, file_path, images, tags, comment, crawler_version, db_updated_at)
+                    VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(url) DO UPDATE SET
+                        title=excluded.title,
+                        platform=excluded.platform,
+                        media_name=excluded.media_name,
+                        created_at=excluded.created_at,
+                        file_path=NULL,
+                        images=excluded.images,
+                        tags=excluded.tags,
+                        comment=excluded.comment,
+                        crawler_version=excluded.crawler_version,
+                        db_updated_at=CURRENT_TIMESTAMP
+                ''',
+                (
+                    normalized_url,
+                    title,
+                    platform_type,
+                    media_name,
+                    created_at or "",
+                    images_json,
+                    tags_json,
+                    comments or "",
+                    crawler_version,
+                ),
+            )
+            self.conn.commit()
+            print(f"[+] 비공개 글 DB 저장 완료(파일 생성 안 함): {normalized_url}")
+        except sqlite3.Error as e:
+            print(f"[!] 비공개 글 DB 저장 실패: {e}")
 
     @staticmethod
     def _generate_markdown(frontmatter: Dict, content: str) -> str:

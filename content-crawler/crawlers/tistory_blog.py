@@ -8,12 +8,13 @@ import feedparser
 import requests
 from typing import Dict, List, Optional
 import time
+from datetime import datetime
 import archive_manager
 
 class TistoryBlogCrawler:
     """간단한 티스토리 블로그 RSS 크롤러"""
 
-    def __init__(self, blog_url: str, request_interval: float = 1.0, archive_mgr=None):
+    def __init__(self, blog_url: str, request_interval: float = 1.0, archive_mgr=None, crawler_version: str = ""):
         """
         Args:
             blog_url: 블로그 기본 주소 (예: https://frankler.tistory.com)
@@ -24,6 +25,7 @@ class TistoryBlogCrawler:
         self.rss_url = f"{self.blog_url}/rss"
         self.request_interval = request_interval
         self.archive_mgr = archive_mgr
+        self.crawler_version = crawler_version
         self.headers = {"User-Agent": "Mozilla/5.0"}
 
     def fetch_rss(self) -> Optional[feedparser.FeedParserDict]:
@@ -48,10 +50,14 @@ class TistoryBlogCrawler:
             return posts
         entries = feed.entries[:max_posts] if max_posts else feed.entries
         for entry in entries:
+            link = entry.get("link", "")
+            if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(link, self.crawler_version):
+                continue
+
             post = {
                 "title": entry.get("title", "제목 없음"),
                 "published": entry.get("published", ""),
-                "link": entry.get("link", ""),
+                "link": link,
                 "summary": entry.get("summary", ""),
             }
             posts.append(post)
@@ -68,15 +74,49 @@ class TistoryBlogCrawler:
             resp.raise_for_status()
 
             soup = BeautifulSoup(resp.text, 'html.parser')
-            title = soup.title.string
+            title = soup.title.string if soup.title and soup.title.string else "제목 없음"
+
+            published = ""
+            published_meta = soup.find("meta", attrs={"property": "article:published_time"})
+            if published_meta and published_meta.get("content"):
+                published = published_meta.get("content").strip()
+
+            if not published:
+                time_tag = soup.find("time")
+                if time_tag:
+                    published = (time_tag.get("datetime") or time_tag.get_text(" ", strip=True) or "").strip()
+
+            summary = ""
+            og_description = soup.find("meta", attrs={"property": "og:description"})
+            if og_description and og_description.get("content"):
+                summary = og_description.get("content").strip()
+
+            content_html = ""
+            content_text = ""
+            for selector in [
+                ".tt_article_useless_p_margin",
+                ".article-view",
+                ".entry-content",
+                "#content",
+            ]:
+                container = soup.select_one(selector)
+                if container is not None:
+                    content_html = str(container)
+                    content_text = container.get_text("\n", strip=True)
+                    break
+
+            if not content_text:
+                content_text = summary
 
             print(f"제목: {title}")
 
             post = {
                 "title": title,
-                "published": "",
+                "published": published,
                 "link": url,
-                "summary": "",
+                "summary": summary,
+                "content": content_text,
+                "html": content_html,
             }
             return post
 
@@ -102,7 +142,7 @@ class TistoryBlogCrawler:
             for loc in root.findall(".//sm:loc", ns):
                 href = loc.text.strip()
                 if self.archive_mgr:
-                    if self.archive_mgr.is_archived(href) and not self.archive_mgr.needs_content_refresh(href):
+                    if self.crawler_version and self.archive_mgr.should_skip_crawl(href, self.crawler_version):
                         continue
                 post = self.parse_url(href)
                 if post:
