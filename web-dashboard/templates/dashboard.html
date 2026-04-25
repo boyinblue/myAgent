@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>아카이브 대시보드</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%232c7be5'/%3E%3Cstop offset='1' stop-color='%2300a78e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M16 19c0-3.3 2.7-6 6-6h11c1.8 0 3.6.8 4.7 2.2l1.2 1.5c.8 1 2 1.5 3.3 1.5H48c3.3 0 6 2.7 6 6v19c0 3.3-2.7 6-6 6H22c-3.3 0-6-2.7-6-6V19z' fill='url(%23g)'/%3E%3Cpath d='M24 27h22M24 35h16' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
     <style>
         * {
             margin: 0;
@@ -32,6 +33,48 @@
             color: white;
             padding: 30px;
             text-align: center;
+        }
+
+        .brand-title {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            background: linear-gradient(145deg, #1f2937, #111827);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 10px 22px rgba(17,24,39,0.28);
+        }
+
+        .brand-mark::before {
+            content: '';
+            width: 30px;
+            height: 34px;
+            border-radius: 9px;
+            background: linear-gradient(180deg, #60a5fa 0%, #34d399 100%);
+            clip-path: polygon(0 0, 70% 0, 100% 24%, 100% 100%, 0 100%);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+        }
+
+        .brand-copy {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+        }
+
+        .brand-kicker {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            opacity: 0.78;
         }
         
         header h1 {
@@ -79,6 +122,34 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+        }
+
+        .status-banner {
+            width: 100%;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: #eef6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e3a8a;
+        }
+
+        .status-banner.running {
+            display: flex;
+        }
+
+        .status-banner a {
+            color: #1d4ed8;
+            font-weight: 600;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .status-banner a:hover {
+            text-decoration: underline;
         }
 
         .view-toggle {
@@ -440,6 +511,14 @@
         }
 
         @media (max-width: 768px) {
+            .brand-title {
+                align-items: flex-start;
+            }
+
+            .brand-copy {
+                align-items: flex-start;
+            }
+
             .post-layout {
                 grid-template-columns: 1fr;
             }
@@ -466,7 +545,15 @@
 <body>
     <div class="container">
         <header>
-            <h1>📚 아카이브 대시보드</h1>
+            <h1>
+                <span class="brand-title">
+                    <span class="brand-mark" aria-hidden="true"></span>
+                    <span class="brand-copy">
+                        <span class="brand-kicker">Archive Control</span>
+                        <span>아카이브 대시보드</span>
+                    </span>
+                </span>
+            </h1>
             <p>콘텐츠 크롤링 관리 및 통계</p>
         </header>
         
@@ -492,6 +579,10 @@
         </div>
         
         <div class="controls">
+            <div id="crawlStatusBanner" class="status-banner">
+                <span id="crawlStatusText">크롤링 상태를 확인하는 중...</span>
+                <a id="crawlStatusLink" href="#" target="_blank" style="display:none;">실행 보기</a>
+            </div>
             <div class="view-toggle">
                 <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
                 <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
@@ -502,7 +593,7 @@
                 <option value="">전체 플랫폼</option>
             </select>
             <button onclick="searchPosts()">🔍 검색</button>
-            <button onclick="showCrawlModal()">🔄 크롤링 실행</button>
+            <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
         </div>
 
         <!-- 크롤링 모달 -->
@@ -568,6 +659,7 @@
         let calendarMonth = today.getMonth() + 1;
         let calendarRange = 'month';
         let weekReferenceDate = formatYmd(today);
+        let crawlStatusTimer = null;
         
         // 통계 로드
         async function loadStats() {
@@ -685,6 +777,43 @@
             statsVisible = !statsVisible;
             document.getElementById('statsPanel').style.display = statsVisible ? 'block' : 'none';
             document.getElementById('statsToggleBtn').textContent = statsVisible ? '📊 통계 닫기' : '📊 통계 보기';
+        }
+
+        function renderCrawlStatus(data) {
+            const banner = document.getElementById('crawlStatusBanner');
+            const text = document.getElementById('crawlStatusText');
+            const link = document.getElementById('crawlStatusLink');
+            const actionBtn = document.getElementById('crawlActionBtn');
+
+            if (data && data.running) {
+                banner.classList.add('running');
+                text.textContent = '크롤링이 진행 중입니다. 리스트는 계속 확인할 수 있습니다.';
+                actionBtn.disabled = true;
+
+                if (data.html_url) {
+                    link.href = data.html_url;
+                    link.style.display = 'inline';
+                } else {
+                    link.style.display = 'none';
+                }
+                return;
+            }
+
+            banner.classList.remove('running');
+            text.textContent = '';
+            link.style.display = 'none';
+            actionBtn.disabled = false;
+        }
+
+        async function loadCrawlStatus() {
+            try {
+                const resp = await fetch('/api/crawl-status');
+                const data = await resp.json();
+                renderCrawlStatus(data);
+            } catch (e) {
+                console.error('크롤링 상태 조회 실패:', e);
+                renderCrawlStatus(null);
+            }
         }
 
         function switchCalendarRange(range) {
@@ -965,6 +1094,8 @@
 
                 if (data.success) {
                     alert('✅ ' + data.message);
+                    renderCrawlStatus({ running: true });
+                    loadCrawlStatus();
                 } else {
                     alert('❌ ' + (data.error || '실패'));
                 }
@@ -1007,7 +1138,10 @@
         
         // 초기 로드
         loadStats();
-        switchView('calendar');
+        switchView('list');
+        loadPosts(1);
+        loadCrawlStatus();
+        crawlStatusTimer = setInterval(loadCrawlStatus, 15000);
     </script>
 </body>
 </html>

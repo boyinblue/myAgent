@@ -13,8 +13,8 @@ import requests
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
-from urllib.parse import unquote
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlsplit, urlunsplit, parse_qsl
 import os  # os.path.basename 사용을 위해 os도 확인 필요
 import re
 
@@ -276,31 +276,49 @@ class ArchiveManager:
         """
         if not url:
             return url
-        
+
+        normalized = str(url).strip()
+        if not normalized:
+            return normalized
+
         # 모바일 URL → 데스크톱 URL
-        url = url.replace("://m.blog.naver.com", "://blog.naver.com")
-        
-        # 쿼리 파라미터 제거 (단, YouTube는 v= 파라미터 유지)
-        if "?" in url:
-            if "youtube.com" in url or "youtu.be" in url:
-                # YouTube의 경우 v= 파라미터만 유지
-                if "?v=" in url:
-                    # ?v=VIDEO_ID만 추출, 나머지는 제거
-                    base_url = url.split("?")[0]
-                    params = url.split("?")[1]
-                    for param in params.split("&"):
-                        if param.startswith("v="):
-                            url = f"{base_url}?{param}"
-                            break
-            else:
-                # 네이버 블로그 등은 쿼리 파라미터 전체 제거
-                url = url.split("?")[0]
-        
-        # 마지막 슬래시 제거
-        if url.endswith("/"):
-            url = url.rstrip("/")
-        
-        return url
+        normalized = normalized.replace("://m.blog.naver.com", "://blog.naver.com")
+
+        try:
+            parts = urlsplit(normalized)
+            scheme = (parts.scheme or "").lower()
+            netloc = (parts.netloc or "").lower()
+            path = parts.path or ""
+
+            # 기본 포트 제거
+            if netloc.endswith(":80") and scheme == "http":
+                netloc = netloc[:-3]
+            elif netloc.endswith(":443") and scheme == "https":
+                netloc = netloc[:-4]
+
+            # path 마지막 슬래시 제거 (루트 제외)
+            if path != "/" and path.endswith("/"):
+                path = path.rstrip("/")
+
+            query = ""
+            is_youtube = ("youtube.com" in netloc) or ("youtu.be" in netloc)
+            if is_youtube:
+                # YouTube는 v=만 유지
+                for key, value in parse_qsl(parts.query, keep_blank_values=False):
+                    if key == "v" and value:
+                        query = f"v={value}"
+                        break
+
+            # fragment 제거
+            normalized = urlunsplit((scheme, netloc, path, query, ""))
+        except Exception:
+            # 파싱 실패 시 보수적으로 기존 규칙 적용
+            if "?" in normalized and not ("youtube.com" in normalized or "youtu.be" in normalized):
+                normalized = normalized.split("?")[0]
+            if normalized.endswith("/"):
+                normalized = normalized.rstrip("/")
+
+        return normalized
 
     def upsert_by_url(self, url: str, title: str = "제목 없음", platform: str = "Unknown"):
         """URL을 기준으로 DB에 데이터를 추가하거나 업데이트합니다."""
@@ -703,6 +721,141 @@ class ArchiveManager:
 
         print(f"🛠️ 자동 보정 완료: {fixed_count}개의 레코드를 '지능적'으로 수정했습니다.")
 
+    def cleanup_duplicate_url_files(self) -> Dict[str, Any]:
+        """같은 URL을 가진 중복 md 파일을 정리하고 리포트를 남깁니다."""
+        archive_root_path = Path(self.archive_root).resolve()
+        project_root = archive_root_path.parent
+        report_path = project_root / "temp" / "duplicate_url_cleanup_report.txt"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+
+        url_to_paths: Dict[str, List[Path]] = {}
+        file_meta: Dict[Path, Dict[str, Any]] = {}
+
+        for md_file in sorted(archive_root_path.rglob("*.md")):
+            frontmatter = self._extract_frontmatter(md_file) or {}
+            raw_url = (frontmatter.get("url") or "").strip()
+            if not raw_url:
+                continue
+
+            normalized_url = self._normalize_url(raw_url)
+            file_meta[md_file] = frontmatter
+            url_to_paths.setdefault(normalized_url, []).append(md_file)
+
+        duplicate_groups = {url: paths for url, paths in url_to_paths.items() if len(paths) > 1}
+
+        deleted_files: List[str] = []
+        updated_db_paths = 0
+        group_lines: List[str] = []
+
+        for normalized_url, paths in sorted(duplicate_groups.items(), key=lambda item: item[0]):
+            db_row = None
+            try:
+                db_row = self.cur.execute(
+                    "SELECT file_path, created_at FROM posts WHERE url = ? LIMIT 1",
+                    (normalized_url,),
+                ).fetchone()
+            except sqlite3.Error:
+                db_row = None
+
+            db_file_path = ""
+            if db_row is not None:
+                if isinstance(db_row, sqlite3.Row):
+                    db_file_path = (db_row["file_path"] or "").strip()
+                else:
+                    db_file_path = str(db_row[0] or "").strip()
+
+            resolved_db_path = ""
+            if db_file_path:
+                db_path_obj = Path(db_file_path)
+                if not db_path_obj.is_absolute():
+                    db_path_obj = archive_root_path / db_path_obj
+                resolved_db_path = str(db_path_obj.resolve())
+
+            canonical_path: Optional[Path] = None
+            if resolved_db_path:
+                for path in paths:
+                    if str(path.resolve()) == resolved_db_path:
+                        canonical_path = path
+                        break
+
+            if canonical_path is None:
+                def _score(path: Path) -> tuple:
+                    meta = file_meta.get(path, {})
+                    created_at = (meta.get("created_at") or "").strip()
+                    title = (meta.get("title") or "").strip()
+                    has_created = 1 if created_at else 0
+                    has_title = 1 if title else 0
+                    return (has_created, has_title, -len(path.name), str(path))
+
+                canonical_path = sorted(paths, key=_score, reverse=True)[0]
+
+            if db_row is not None:
+                canonical_created_at = (file_meta.get(canonical_path, {}).get("created_at") or "").strip()
+                try:
+                    self.cur.execute(
+                        "UPDATE posts SET file_path = ?, created_at = COALESCE(NULLIF(created_at, ''), ?) WHERE url = ?",
+                        (str(canonical_path.resolve()), canonical_created_at, normalized_url),
+                    )
+                    updated_db_paths += 1
+                except sqlite3.Error:
+                    pass
+
+            removed_paths: List[str] = []
+            for path in paths:
+                if path == canonical_path:
+                    continue
+                try:
+                    path.unlink()
+                    removed_paths.append(str(path.resolve()))
+                    deleted_files.append(str(path.resolve()))
+                except Exception as delete_error:
+                    removed_paths.append(f"DELETE_FAILED:{path.resolve()}:{delete_error}")
+
+            group_lines.append(f"URL\t{normalized_url}")
+            group_lines.append(f"KEEP\t{canonical_path.resolve()}")
+            for removed in removed_paths:
+                group_lines.append(f"DELETE\t{removed}")
+            group_lines.append("")
+
+        if duplicate_groups:
+            self.conn.commit()
+
+        with open(report_path, "w", encoding="utf-8") as report_file:
+            report_file.write(f"duplicate_groups\t{len(duplicate_groups)}\n")
+            report_file.write(f"deleted_files\t{len(deleted_files)}\n")
+            report_file.write(f"updated_db_paths\t{updated_db_paths}\n")
+            report_file.write("\n")
+            for line in group_lines:
+                report_file.write(line + "\n")
+
+        return {
+            "duplicate_groups": len(duplicate_groups),
+            "deleted_files": len(deleted_files),
+            "updated_db_paths": updated_db_paths,
+            "report_path": str(report_path),
+        }
+
+    def get_duplicate_url_file_metrics(self) -> Dict[str, Any]:
+        """현재 archive 내 URL 중복 md 상태를 집계합니다."""
+        archive_root_path = Path(self.archive_root).resolve()
+        url_counts: Dict[str, int] = {}
+
+        for md_file in archive_root_path.rglob("*.md"):
+            frontmatter = self._extract_frontmatter(md_file) or {}
+            raw_url = (frontmatter.get("url") or "").strip()
+            if not raw_url:
+                continue
+            normalized_url = self._normalize_url(raw_url)
+            url_counts[normalized_url] = url_counts.get(normalized_url, 0) + 1
+
+        duplicate_groups = sum(1 for count in url_counts.values() if count > 1)
+        duplicate_files = sum(count - 1 for count in url_counts.values() if count > 1)
+        return {
+            "tracked_urls": len(url_counts),
+            "duplicate_groups": duplicate_groups,
+            "duplicate_files": duplicate_files,
+        }
+
     def get_archive_path(self, year: int, month: int) -> str:
         """아카이브 디렉토리 경로를 반환합니다."""
         path = os.path.join(self.archive_root, f"{year:04d}", f"{month:02d}")
@@ -830,7 +983,27 @@ class ArchiveManager:
 
         Returns:
             저장된 파일 경로
-        """        # 날짜 파싱 (유효하지 않으면 오늘 날짜 사용)
+        """
+        # URL 정규화 (m.blog.naver.com → blog.naver.com, 쿼리 제거)
+        url = self._normalize_url(url)
+
+        # 동일 URL의 기존 파일 경로를 먼저 조회합니다.
+        # 재아카이브 시 경로가 바뀌면 이전 md를 정리하는 데 사용합니다.
+        old_file_path = ""
+        try:
+            existing_row = self.cur.execute(
+                "SELECT file_path FROM posts WHERE url = ? LIMIT 1",
+                (url,),
+            ).fetchone()
+            if existing_row is not None:
+                if isinstance(existing_row, sqlite3.Row):
+                    old_file_path = (existing_row["file_path"] or "").strip()
+                else:
+                    old_file_path = str(existing_row[0] or "").strip()
+        except sqlite3.Error:
+            old_file_path = ""
+
+        # 날짜 파싱 (유효하지 않으면 오늘 날짜 사용)
         year, month, day = self._slugify_created_date(created_at)
 
         # 디렉토리 경로
@@ -839,9 +1012,6 @@ class ArchiveManager:
         # 파일명
         filename = self.generate_filename(year, month, day, platform_type, media_name, title)
         filepath = os.path.join(archive_path, filename)
-
-        # URL 정규화 (m.blog.naver.com → blog.naver.com, 쿼리 제거)
-        url = self._normalize_url(url)
 
         # Frontmatter 생성 / 기존 파일이 있으면 병합
         safe_event_dates = self._ensure_list(event_dates)
@@ -944,6 +1114,19 @@ class ArchiveManager:
             if result:
                 post_id = result[0]
                 print(f"[+] DB 저장 완료: ID={post_id}, URL={url}")
+
+            # 동일 URL의 이전 파일이 다른 경로에 남아 있으면 정리
+            try:
+                if old_file_path:
+                    new_resolved = str(Path(filepath).resolve())
+                    old_resolved = str(Path(old_file_path).resolve())
+                    archive_root_resolved = str(Path(self.archive_root).resolve())
+                    old_in_archive = old_resolved.startswith(archive_root_resolved)
+                    if old_in_archive and old_resolved != new_resolved and os.path.exists(old_resolved):
+                        os.remove(old_resolved)
+                        print(f"[i] 동일 URL 이전 파일 정리: {old_resolved}")
+            except Exception as cleanup_error:
+                print(f"[!] 이전 파일 정리 실패: {cleanup_error}")
         except sqlite3.Error as e:
             print(f"[!] DB 저장 실패: {e}")
 

@@ -3,7 +3,7 @@
 """콘텐츠 크롤러 메인 실행 스크립트
 
 여러 플랫폼에서 콘텐츠를 수집하고 아카이브에 저장합니다.
-지원: 네이버 블로그, Tistory, GitHub Pages, YouTube
+지원: 네이버 블로그, Tistory, YouTube
 """
 
 import json
@@ -32,7 +32,6 @@ if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
 # 로컬 모듈 import
 from crawlers.naver_blog import NaverBlogCrawler
 from crawlers.tistory_blog import TistoryBlogCrawler
-from crawlers.github_pages import GitHubPagesCrawler
 from crawlers.youtube import YouTubeCrawler
 from archive_manager import ArchiveManager
 from event_date_extractor import EventDateExtractor
@@ -156,18 +155,6 @@ def parse_url(url: str, archive_mgr=None):
             "content": "",
         }
         return {"post": post, "platform_type": "YouTube", "media_name": author}
-
-    if "github.io" in host:
-        title = _safe_title_from_page(url)
-        media_name = host.split(".")[0] if host else "unknown"
-        post = {
-            "title": title,
-            "published": "",
-            "link": url,
-            "summary": "",
-            "content": "",
-        }
-        return {"post": post, "platform_type": "GitHubPages", "media_name": media_name}
 
     # 기타 일반 URL
     title = _safe_title_from_page(url)
@@ -449,44 +436,6 @@ def crawl_tistory_blogs(config: Dict, args, archive_mgr=None):
     return all_posts
 
 
-def crawl_github_pages(config: Dict, args, archive_mgr=None):
-    """GitHub Pages 크롤링"""
-    gp_config = config.get("platforms", {}).get("github_pages", {})
-    if not gp_config.get("enabled"):
-        return []
-
-    blogs = gp_config.get("blogs", [])
-    all_posts: List[Dict] = []
-
-    for blog_info in blogs:
-        blog_url = blog_info.get("blog_url")
-        platform_type = blog_info.get("platform_type", "GitHubPages")
-        blog_name = blog_info.get("name", "unknown")
-        request_interval = blog_info.get("request_interval_seconds", 1.0)
-
-        if not blog_url:
-            continue
-
-        print(f"\n[*] GitHub Pages 크롤링 시작 ({blog_name}: {blog_url})")
-        print(f"[*] 요청 간격: {request_interval}초")
-
-        crawler = GitHubPagesCrawler(
-            blog_url,
-            request_interval=request_interval,
-            archive_mgr=archive_mgr,
-            crawler_version=CRAWLER_VERSION,
-        )
-        posts = crawler.crawl(max_posts=args.max_posts)
-
-        if posts:
-            archive_root = config.get("archive_root", "./archive")
-            raw_dir = config.get("raw_directory")
-            archive_posts(posts, archive_mgr, platform_type, blog_name, raw_dir=raw_dir)
-            all_posts.extend(posts)
-
-    return all_posts
-
-
 def crawl_youtube(config: Dict, args, archive_mgr=None):
     """YouTube 채널 크롤링"""
     yt_config = config.get("platforms", {}).get("youtube", {})
@@ -668,6 +617,17 @@ def main():
     if backfilled_versions:
         print(f"[+] 기존 아카이브 crawler_version 역채움 완료: {backfilled_versions}건")
 
+    duplicate_cleanup_result = archive_mgr.cleanup_duplicate_url_files()
+    if duplicate_cleanup_result.get("duplicate_groups"):
+        print(
+            "[+] URL 중복 md 정리 완료 "
+            f"(그룹 {duplicate_cleanup_result['duplicate_groups']} / 삭제 {duplicate_cleanup_result['deleted_files']} / "
+            f"DB경로갱신 {duplicate_cleanup_result['updated_db_paths']})"
+        )
+    else:
+        print("[+] URL 중복 md 없음")
+    print(f"[i] 중복 정리 리포트: {duplicate_cleanup_result.get('report_path')}")
+
     def _index_local_images_once() -> None:
         roots = [archive_root, raw_dir]
         if args.local_image_root:
@@ -730,7 +690,6 @@ def main():
     youtube_videos: List[Dict] = []
     tistory_posts: List[Dict] = []
     naver_posts: List[Dict] = []
-    github_posts: List[Dict] = []
     
     # 에러 수집 시작
     error_collector = ErrorCollector()
@@ -747,21 +706,22 @@ def main():
             tistory_posts = crawl_tistory_blogs(config, args, archive_mgr)
             all_posts.extend(tistory_posts)
 
-            github_posts = crawl_github_pages(config, args, archive_mgr)
-            all_posts.extend(github_posts)
-
     new_archived_count_youtube = get_number_of_new_archived(youtube_videos)
     new_archived_count_naver = get_number_of_new_archived(naver_posts)
     new_archived_count_tistory = get_number_of_new_archived(tistory_posts)
-    new_archived_count_github = get_number_of_new_archived(github_posts)
-    new_archived_total = new_archived_count_youtube + new_archived_count_naver + new_archived_count_tistory + new_archived_count_github
+    new_archived_total = new_archived_count_youtube + new_archived_count_naver + new_archived_count_tistory
 
     print("\n" + "=" * 60)
     print(f"[+] 모든 작업 완료! (총 {len(all_posts)}개 발견 / {new_archived_total}개 추가)")
     print(f"  - YouTube 영상: {len(youtube_videos)}개 발견 / {new_archived_count_youtube}개 추가")
     print(f"  - 네이버 블로그 포스트: {len(naver_posts)}개 발견 / {new_archived_count_naver}개 추가")
     print(f"  - 티스토리 블로그 포스트: {len(tistory_posts)}개 발견 / {new_archived_count_tistory}개 추가")
-    print(f"  - GitHub Pages 포스트: {len(github_posts)}개 발견 / {new_archived_count_github}개 추가")
+    duplicate_metrics = archive_mgr.get_duplicate_url_file_metrics()
+    print(
+        "  - URL 중복 md 상태: "
+        f"중복그룹 {duplicate_metrics['duplicate_groups']} / 중복파일 {duplicate_metrics['duplicate_files']} / "
+        f"추적URL {duplicate_metrics['tracked_urls']}"
+    )
 
     if error_collector.has_errors():
         print(f"[!] 에러 {len(error_collector.errors)}개 발생")

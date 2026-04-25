@@ -25,4 +25,4 @@ if __name__ == '__main__':
     os.environ['DASHBOARD_LOCAL_MODE'] = '1'
 
     import app as dashboard_app
-    dashboard_app.app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+    dashboard_app.app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=True)

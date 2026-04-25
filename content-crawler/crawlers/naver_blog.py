@@ -11,6 +11,7 @@ import requests
 import urllib.request
 import urllib.parse
 import json
+import re
 from typing import Dict, Optional, List
 from datetime import datetime, timezone, timedelta
 import time
@@ -297,6 +298,13 @@ class NaverBlogCrawler:
                         or post_property.attrs.get("adddate")
                         or ""
                     )
+
+                # 일부 템플릿은 속성 접근이 불안정하므로 원문 HTML에서 addDate를 재탐색합니다.
+                if not add_date:
+                    add_date_match = re.search(r'addDate="(\d{10,16})"', html_content)
+                    if add_date_match:
+                        add_date = add_date_match.group(1)
+
                 if add_date and add_date.isdigit():
                     published = datetime.fromtimestamp(
                         int(add_date) / 1000,

@@ -56,6 +56,16 @@ archive/
 - 중복 체크로 재크롤링 방지
 - 메타데이터 인덱스 유지
 
+### created_at 품질 정책 ✅
+
+- `created_at` 추출 우선순위:
+  - 1) 페이지 표시 날짜(`p.blog_date` 등)
+  - 2) 구조화 메타(`meta/article:published_time`, `time[datetime]`)
+  - 3) 원문 HTML의 `addDate` 타임스탬프 정규식 폴백
+- URL 중복 파일은 URL 기준으로 1개만 유지하고 DB `file_path`를 정본으로 동기화
+- `created_at`이 채워진 항목은 주기적으로 날짜 디렉토리(YYYY/MM)로 재배치
+- 비공개 글은 마크다운 파일을 생성하지 않고 DB에만 보관(`file_path = NULL`)
+
 ---
 
 ## 📋 통합된 구조

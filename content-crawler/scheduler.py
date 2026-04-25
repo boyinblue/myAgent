@@ -45,7 +45,7 @@ class AnniversaryFinder:
             cur.execute(
                 """
                 SELECT title, url, created_at
-                FROM achieves
+                                FROM posts
                 WHERE created_at IS NOT NULL
                   AND created_at != ''
                 """

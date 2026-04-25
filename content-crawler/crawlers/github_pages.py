@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import time
 import re
+from urllib.parse import urlparse
 import archive_manager
 
 
@@ -35,6 +36,61 @@ class GitHubPagesCrawler:
         if match:
             return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
         return None
+
+    def _is_probable_post_url(self, url: str) -> bool:
+        """카테고리/정적/앵커 페이지를 제외하고 포스트 URL만 선별합니다."""
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return False
+
+        path = (parsed.path or "").strip()
+        fragment = (parsed.fragment or "").strip()
+
+        # 앵커 링크/루트/메일 링크 제외
+        if fragment:
+            return False
+        if not path or path == "/":
+            return False
+        if "mailto:" in url:
+            return False
+
+        lowered = path.lower()
+
+        # 정적 리소스/카테고리/태그/소개성 페이지 제외
+        blocked_prefixes = (
+            "/about",
+            "/link",
+            "/memo",
+            "/writing",
+            "/category",
+            "/categories",
+            "/tag",
+            "/tags",
+            "/archive",
+            "/assets",
+            "/_pages",
+        )
+        if lowered.startswith(blocked_prefixes):
+            return False
+
+        blocked_exact = {"/posts", "/posts.html", "/raw.html"}
+        if lowered in blocked_exact:
+            return False
+
+        if re.search(r"\.(css|js|json|png|jpe?g|gif|svg|ico|webp|xml|txt)$", lowered):
+            return False
+
+        # 날짜가 들어간 URL은 포스트로 간주
+        if self._extract_date_from_url(url):
+            return True
+
+        # /_posts/는 포스트 소스 경로
+        if "/_posts/" in lowered:
+            return True
+
+        # 숫자 slug 기반 분류(/004_python 등)는 카테고리 가능성이 높아 제외
+        return False
 
     def crawl_index_page(self, index_url: Optional[str] = None) -> List[Dict]:
         """
@@ -74,6 +130,10 @@ class GitHubPagesCrawler:
 
                     # 외부 링크 제외
                     if not href.startswith(self.blog_url):
+                        continue
+
+                    # 포스트가 아닌 페이지(카테고리/정적 페이지)는 아카이브에서 제외
+                    if not self._is_probable_post_url(href):
                         continue
 
                     if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(href, self.crawler_version):
