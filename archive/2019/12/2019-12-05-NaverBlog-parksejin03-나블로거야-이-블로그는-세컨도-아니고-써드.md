@@ -1,19 +1,24 @@
 ---
-title: 나블로거야! 이 블로그는 세컨도 아니고 써드?
-url: https://blog.naver.com/parksejin03/221727420954
-created_at: Thu, 05 Dec 2019 03:51:26 +0900
-event_dates: null
-category: ''
-tags: null
-comments: '나는 어찌어찌하다보니 블로그가 많아졌다. 원래 공들여서 쓰던 블로그 하나 아무거나 막 쓰는 블로그 또 하나 그리고 내 이름이 아이디인
-  이 블로그! 그것 말고도 티스토리도 있으니 블로그가 총 4개라고 말할 수 있다. ㅋㅋㅋㅋㅋㅋㄱㅋ 블로그 관리는 잼병이지만 어찌되었든 나는 블로거다!
-  #나블로거야 '
-keywords: null
-crawler_version: '2.2'
-images: null
-platform_type: NaverBlog
-media_name: parksejin03
+title: "나블로거야! 이 블로그는 세컨도 아니고 써드?"
+url: "https://blog.naver.com/parksejin03/221727420954"
+platform: "NaverBlog"
+media_name: "parksejin03"
+created_at: "Thu, 05 Dec 2019 03:51:26 +0900"
+event_dates:
+category: ""
+tags:
+comments: ""
+keywords:
+crawler_version: "2.2"
+images:
+  -
+      url: "https://blogthumb.pstatic.net/MjAxOTEyMDVfMzEg/MDAxNTc1NDg1MjQ0NTYw.ZxrHrgGyeqH0r6mS4f9oIhDkg7M41EG8YDRAcAehzmwg.WyZULO8RIMde0CMCICljSWgNjiY6MWU5FFPR6WWRPmUg.JPEG.parksejin03/1575485243621.jpg?type=s3"
+      description: ""
+      blog: "parksejin03"
+      size: "27690"
+      sha256: "62e465eecb6d93b697dcbc1165a6058374e667802e5966dd4a843f52100636eb"
 ---
+
 # 나블로거야! 이 블로그는 세컨도 아니고 써드?
 
 (본문 없음)

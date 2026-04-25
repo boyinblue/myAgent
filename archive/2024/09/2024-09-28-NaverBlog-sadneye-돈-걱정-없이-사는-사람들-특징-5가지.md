@@ -1,21 +1,24 @@
 ---
-title: 돈 걱정 없이 사는 사람들 특징 5가지.
-url: https://blog.naver.com/sadneye/223598919198
-created_at: Sat, 28 Sep 2024 20:30:00 +0900
-event_dates: null
-category: ''
-tags: null
-comments: '돈 걱정이 왜 없겟어? 어차피 돈 내가 원하는 만큼 가질수도 없는데, 돈 걱정 없이 산다고, 정신승리를 하는것이 더 빠를수도 있어요.
-  평생 돈 걱정 없이 사는 사람들에 대한 이야기를 해보려고 해요. 주변을 보면, 돈에 크게 신경 쓰지 않고 여유롭게 사는 사람들이 있잖아요? 그런
-  사람들이 다 돈이 많은 건 아닌데도 말이야. 그래서 이번에는 돈 걱정 없이 사는 사람들의 공통된 특징을 한 번 이야기해 보려고 해요. 혹시 우리도
-  이런 마인드를 조금씩 배워서, 돈 스트레스 덜 받으며 살 수 있지 않을까 하는 마음으로요! 필요한 만큼만 벌면 된다고 생각 이 사람들은 돈이 목적이
-  아니에요. 돈을 막 많이 벌려고 하지 않고, 내가 필요한 만큼....... '
-keywords: null
-crawler_version: '2.2'
-images: null
-platform_type: NaverBlog
-media_name: sadneye
+title: "돈 걱정 없이 사는 사람들 특징 5가지."
+url: "https://blog.naver.com/sadneye/223598919198"
+platform: "NaverBlog"
+media_name: "sadneye"
+created_at: "Sat, 28 Sep 2024 20:30:00 +0900"
+event_dates:
+category: ""
+tags:
+comments: ""
+keywords:
+crawler_version: "2.2"
+images:
+  -
+      url: "https://blogthumb.pstatic.net/MjAyNDA5MjdfMjg0/MDAxNzI3NDM2NTY3Njg3.KNivmLuD_rT6gGx3JpeqTArLZXvbMLGWkRG9pMwGkv4g.ucpg9IrJRlNu_Ml1aGUXEK2UEuEDoU3Svdwcm3COcgMg.JPEG/009.jpg?type=s3"
+      description: ""
+      blog: "sadneye"
+      size: "35628"
+      sha256: "75a70edf08aff77cbe08e9cbb436b233ed1c48425fcc3024af667ea6066c1d8b"
 ---
+
 # 돈 걱정 없이 사는 사람들 특징 5가지.
 
 (본문 없음)

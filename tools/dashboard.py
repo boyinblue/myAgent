@@ -220,15 +220,9 @@ ngrok v3+ 에서는 계정 및 authtoken 이 필요합니다.
     
     return {
         'success': True,
-        'message': f'''{precheck_warning}🚀 웹 대시보드를 시작했습니다.
-
-⏳ 약 5초 후 접속 URL이 전송됩니다.
-📱 텔레그램에서 URL을 받으면 클릭하세요.
-
-ℹ️ 로컬 대시보드와 분리된 원격 모드로 실행됩니다.
-
-ℹ️ 백그라운드에서 실행 중입니다 (PID: {process.pid})
-🛑 종료하려면: stop_dashboard 명령 사용'''
+        'message': f'🌐 웹 대시보드 시작 중... 곧 URL이 전송됩니다.',
+        'url': None,  # URL은 별도로 전송됨
+        'pid': process.pid
     }
 
 def stop_dashboard():

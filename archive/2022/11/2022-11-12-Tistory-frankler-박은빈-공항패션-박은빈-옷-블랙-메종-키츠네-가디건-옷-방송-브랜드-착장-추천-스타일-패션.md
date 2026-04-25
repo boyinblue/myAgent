@@ -1,62 +1,54 @@
 ---
-title: 박은빈 공항패션 박은빈 옷 블랙 메종 키츠네 가디건 옷 방송 브랜드 착장 추천 스타일 패션정보
-url: https://frankler.tistory.com/3741
-created_at: '2022-11-12T22:40:46+09:00'
+title: "박은빈 공항패션 박은빈 옷 블랙 메종 키츠네 가디건 옷 방송 브랜드 착장 추천 스타일 패션정보"
+url: "https://frankler.tistory.com/3741"
+platform: "Tistory"
+media_name: "frankler"
+created_at: "2022-11-12T22:40:46+09:00"
 event_dates:
-- '2022-11-12'
-category: ''
-tags: null
-platform_type: Tistory
-media_name: frankler
+category: ""
+tags: "null"
+comments: ""
+keywords:
+crawler_version: "2.2"
+images:
+  -
+      url: "https://blog.kakaocdn.net/dn/pvd7i/btrQZs0ASF1/QzikmT0MYaLl4KzCli7fAk/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "357934"
+      sha256: "fe22a846878a5f0512a551a0e1f44a5a7347169023a53c143248b7040dce30d8"
+  -
+      url: "https://blog.kakaocdn.net/dn/djPXPF/btrQ2RRTkiP/kGOD8uJIKLs5ik9iq9dfX0/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "454312"
+      sha256: "a41591a36c6a8bf54297fda1be48a15b1cc385cab481b8ada84d304435d3f172"
+  -
+      url: "https://blog.kakaocdn.net/dn/lInBN/btrQ0XZxGg0/nrYkJQGT4YfcqM4xCweKfK/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "146226"
+      sha256: "4ad050b4299d4cdaf8f280b99adbbc344669969f38e87015458edda6ceb763b0"
+  -
+      url: "https://blog.kakaocdn.net/dn/bMExpm/btrQ4aQ9MWj/OBssMU3DTagL3v7auNdvLK/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "38972"
+      sha256: "d846e9b892b0b43943629f81da7e6b59286b7e9f166356a463a3613ecb0db0e9"
+  -
+      url: "https://blog.kakaocdn.net/dn/T52eH/btrQ3SQxopZ/h3hP98sIP8UmN2WD2WSteK/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "194890"
+      sha256: "b217767632ecadebf75f2a9f2d509c644f3e9522d66adbaa2dd3d6bfc1541ae1"
+  -
+      url: "https://blog.kakaocdn.net/dn/wK6k8/btrQ4X49xqM/6snkhCKK5BYrmMEEFQ3x51/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "24928"
+      sha256: "f24de810624d734663e41309e9012b2d1be8f824af734debddfef48fdb8ea667"
 ---
+
 # 박은빈 공항패션 박은빈 옷 블랙 메종 키츠네 가디건 옷 방송 브랜드 착장 추천 스타일 패션정보
 
-<p><figure class="imagegridblock">
-  <div class="image-container"><span style="width: 55.9415%; margin-right: 10px;"><img height="640" src="https://blog.kakaocdn.net/dn/pvd7i/btrQZs0ASF1/QzikmT0MYaLl4KzCli7fAk/img.jpg" width="638" /></span><span style="width: 42.897%;"><img height="832" src="https://blog.kakaocdn.net/dn/djPXPF/btrQ2RRTkiP/kGOD8uJIKLs5ik9iq9dfX0/img.jpg" width="636" /></span></div>
-</figure>
-<figure class="imagegridblock">
-  <div class="image-container"><span style="width: 26.2076%; margin-right: 10px;"><img height="664" src="https://blog.kakaocdn.net/dn/lInBN/btrQ0XZxGg0/nrYkJQGT4YfcqM4xCweKfK/img.jpg" width="548" /></span><span style="width: 29.4238%; margin-right: 10px;"><img height="395" src="https://blog.kakaocdn.net/dn/bMExpm/btrQ4aQ9MWj/OBssMU3DTagL3v7auNdvLK/img.jpg" width="366" /></span><span style="width: 42.0457%;"><img height="503" src="https://blog.kakaocdn.net/dn/T52eH/btrQ3SQxopZ/h3hP98sIP8UmN2WD2WSteK/img.jpg" width="666" /></span></div>
-</figure>
-</p>
-<p style="text-align: center;"><span style="background-color: #ffffff; color: #444444;">박은빈 공항패션 박은빈 옷 블랙 메종 키츠네 가디건</span>&nbsp;옷 방송 브랜드 착장 추천 스타일 패션정보</p>
-<p style="text-align: center;"><span style="background-color: #ffffff; color: #555555;">☝</span>제품바로가기<span style="background-color: #ffffff; color: #555555;">☝</span></p>
-<p style="text-align: center;"><a href="https://hypefashion.kr/products/166294/?utm_campaign=from_naver_shopping&amp;utm_source=naver_shopping&amp;utm_medium=redirect&amp;NaPm=ct%3Dladz4gbk%7Cci%3D3ad665199e025c81135b02e2c871dd1a2d62e228%7Ctr%3Dsls%7Csn%3D398496%7Chk%3Db740150cbbe1c8cef758481d6d626925acb9c967">메종 키츠네 </a></p>
-<p style="text-align: center;"><a href="https://hypefashion.kr/products/166294/?utm_campaign=from_naver_shopping&amp;utm_source=naver_shopping&amp;utm_medium=redirect&amp;NaPm=ct%3Dladz4gbk%7Cci%3D3ad665199e025c81135b02e2c871dd1a2d62e228%7Ctr%3Dsls%7Csn%3D398496%7Chk%3Db740150cbbe1c8cef758481d6d626925acb9c967">더블 폭스 헤드 패치 라운드넥 가디건</a></p>
-<p><figure class="imageblock alignCenter"><a href="https://hypefashion.kr/products/166294/?utm_campaign=from_naver_shopping&amp;amp;utm_source=naver_shopping&amp;amp;utm_medium=redirect&amp;amp;NaPm=ct%3Dladz4gbk%7Cci%3D3ad665199e025c81135b02e2c871dd1a2d62e228%7Ctr%3Dsls%7Csn%3D398496%7Chk%3Db740150cbbe1c8cef758481d6d626925acb9c967" target=""><img height="210" src="https://blog.kakaocdn.net/dn/wK6k8/btrQ4X49xqM/6snkhCKK5BYrmMEEFQ3x51/img.jpg" width="200" /></a></figure>
-</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">이 내용이 도움이 되셨다면 더보기를 통해 드라마 패션 의상정보를 확인하세요!!</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;"><a href="https://frankler.tistory.com/category/%EC%9D%BC%EC%83%81%EC%A0%95%EB%B3%B4/%ED%8C%A8%EC%85%98%EC%A0%95%EB%B3%B4" style="background-color: #f24537; color: #fff; border-radius: 30px; padding: 16px 32px; font-size: 18px; font-weight: bold; text-decoration: none;">드라마 패션 더 보기</a></p>
-<p style="text-align: center;">&nbsp;</p>
-<figure contenteditable="false" id="og_1668260403217"><a href="https://frankler.tistory.com/3720" rel="noopener">
-<div class="og-image">&nbsp;</div>
-<div class="og-text">
-<p class="og-title">배우 박은빈 드레스 부산 '2022 아시아콘텐츠어워즈' 레드카펫 행사 옷 방송 브랜드 착장 추천 스</p>
-<p class="og-desc">배우 박은빈 드레스 부산 '2022 아시아콘텐츠어워즈' 레드카펫 행사 옷 방송 브랜드 착장 추천 스타일 패션정보 ☝제품바로가기☝ Dolce &amp; Gabbana Long One-shoulder Dress W Dolce &amp; Gabbana Natural Long One-shoulder</p>
-<p class="og-host">frankler.tistory.com</p>
-</div>
-</a></figure>
-<figure contenteditable="false" id="og_1668251474634"><a href="https://frankler.tistory.com/3718">
-<div class="og-image">&nbsp;</div>
-<div class="og-text">
-<p class="og-title">아이유 원피스 블라우스+치마 부산 2022 BIFF 브로커 옷 방송 브랜드 착장 추천 스타일 패션정보</p>
-<p class="og-desc">아이유 원피스 블라우스+치마 부산 2022 BIFF 브로커 옷 방송 브랜드 착장 추천 스타일 패션정보 ☝제품바로가기☝ HIGH NECK-TIE BLOUSE PLEASE SELECT THE DESTINATION COUNTRY AND LANGUAGE : SHIPPING TO :..</p>
-<p class="og-host">frankler.tistory.com</p>
-</div>
-</a></figure>
-<figure contenteditable="false" id="og_1668251474635"><a href="https://frankler.tistory.com/3651">
-<div class="og-image">&nbsp;</div>
-<div class="og-text">
-<p class="og-title">뷔 김태형 옷 BTS 방탄소년단 별이 빛나는 밤에 라디오 아크네 스튜디오 패션 의상 협찬 코디 방</p>
-<p class="og-desc">뷔 김태형 옷 BTS 방탄소년단 별이 빛나는 밤에 라디오 아크네 스튜디오 패션 의상 협찬 코디 방송 브랜드 착장 추천 패션정보 ☝제품바로가기☝ 아크네스튜디오 Bomber sweater jacket [11번가] 아크네</p>
-<p class="og-host">frankler.tistory.com</p>
-</div>
-</a></figure>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;"><a href="https://frankler.tistory.com/category/%EC%9D%BC%EC%83%81%EC%A0%95%EB%B3%B4/%ED%8C%A8%EC%85%98%EC%A0%95%EB%B3%B4" style="background-color: #f24537; color: #fff; border-radius: 30px; padding: 16px 32px; font-size: 18px; font-weight: bold; text-decoration: none;">드라마 패션 더 보기</a></p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">&nbsp;</p>
+(본문 없음)

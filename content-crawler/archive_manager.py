@@ -9,6 +9,8 @@ import os
 import sys
 import json
 import sqlite3
+import requests
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -31,19 +33,31 @@ class ArchiveManager:
             archive_root: 아카이브 루트 디렉토리 (None이면 환경변수 또는 기본값 사용)
             db_path: 인덱스용 SQLite 데이터베이스 경로 (None이면 환경변수 또는 기본값 사용)
         """
-        # 명시적 전달 > 환경변수 > 기본값
-        self.archive_root = archive_root or os.getenv('ARCHIVE_ROOT', './archive')
-        db_path = db_path or os.getenv('ARCHIVE_DB', os.path.join(self.archive_root, 'archive_index.db'))
-        
+        project_root = Path(__file__).resolve().parents[1]
+
+        archive_root_value = archive_root or os.getenv('ARCHIVE_ROOT', 'archive')
+        archive_root_path = Path(archive_root_value)
+        if not archive_root_path.is_absolute():
+            archive_root_path = project_root / archive_root_path
+        self.archive_root = str(archive_root_path.resolve())
+
+        db_path_value = db_path or os.getenv('ARCHIVE_DB', os.path.join(self.archive_root, 'archive_index.db'))
+        db_path_obj = Path(db_path_value)
+        if not db_path_obj.is_absolute():
+            db_path_obj = project_root / db_path_obj
+        db_path_resolved = str(db_path_obj.resolve())
+
         os.makedirs(self.archive_root, exist_ok=True)
 
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(db_path_resolved, check_same_thread=False)
 
         # 결과를 dict처럼 사용 가능하게 함
         self.conn.row_factory = sqlite3.Row
 
         self.cur = self.conn.cursor()
+        self._image_url_health_cache: Dict[str, bool] = {}
         self._create_table()
+        self._create_local_images_table()
 
     def _create_table(self):
         # 중복 방지를 위해 link를 UNIQUE 키로 설정
@@ -89,6 +103,161 @@ class ArchiveManager:
             END
         ''')
         self.conn.commit()
+
+    def _create_local_images_table(self):
+        """로컬 이미지 인덱싱용 테이블을 생성합니다."""
+        self.cur.execute('''
+            CREATE TABLE IF NOT EXISTS local_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                image_uid TEXT UNIQUE,
+                file_path TEXT UNIQUE,
+                file_name TEXT,
+                location TEXT,
+                comment TEXT,
+                source_root TEXT,
+                size_bytes INTEGER,
+                modified_at TEXT,
+                created_at TEXT,
+                db_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 기존 DB 마이그레이션: image_uid 컬럼이 없으면 추가
+        cols = self.cur.execute("PRAGMA table_info(local_images)").fetchall()
+        col_names = {c[1] for c in cols}
+        if 'image_uid' not in col_names:
+            self.cur.execute("ALTER TABLE local_images ADD COLUMN image_uid TEXT")
+
+        self.cur.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_local_images_image_uid
+            ON local_images(image_uid)
+        ''')
+
+        self.cur.execute('''
+            CREATE TRIGGER IF NOT EXISTS update_local_images_timestamp
+            AFTER UPDATE ON local_images
+            BEGIN
+                UPDATE local_images SET db_updated_at = CURRENT_TIMESTAMP WHERE id = old.id;
+            END
+        ''')
+        self.conn.commit()
+
+    @staticmethod
+    def _is_image_file(path_obj: Path) -> bool:
+        return path_obj.suffix.lower() in {
+            '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.svg'
+        }
+
+    @staticmethod
+    def _build_image_comment(path_obj: Path) -> str:
+        # 파일명을 기본 코멘트로 사용 (필요 시 수동 편집 가능)
+        return path_obj.stem.replace('_', ' ').replace('-', ' ').strip()
+
+    @staticmethod
+    def _compute_image_uid(path_obj: Path) -> str:
+        """파일 내용 기반 고유 식별자(SHA256)를 반환합니다."""
+        sha = hashlib.sha256()
+        with open(path_obj, 'rb') as f:
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                sha.update(chunk)
+        return sha.hexdigest()
+
+    def index_local_images(self, roots: List[str]) -> Dict[str, int]:
+        """지정한 로컬 루트 디렉토리의 이미지 파일을 DB(local_images)로 인덱싱합니다."""
+        inserted = 0
+        updated = 0
+        skipped = 0
+        scanned = 0
+
+        normalized_roots: List[Path] = []
+        seen = set()
+        for root in roots or []:
+            if not root:
+                continue
+            rp = Path(root).resolve()
+            key = str(rp).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_roots.append(rp)
+
+        for root in normalized_roots:
+            if not root.exists() or not root.is_dir():
+                print(f"[i] 로컬 이미지 인덱싱 건너뜀(디렉토리 없음): {root}")
+                continue
+
+            for path_obj in root.rglob('*'):
+                if not path_obj.is_file():
+                    continue
+                if not self._is_image_file(path_obj):
+                    continue
+
+                scanned += 1
+                try:
+                    stat = path_obj.stat()
+                    image_uid = self._compute_image_uid(path_obj)
+                    file_path = str(path_obj.resolve())
+                    file_name = path_obj.name
+                    try:
+                        location = str(path_obj.parent.resolve().relative_to(root))
+                    except Exception:
+                        location = str(path_obj.parent.resolve())
+
+                    comment = self._build_image_comment(path_obj)
+                    size_bytes = int(stat.st_size)
+                    modified_at = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()
+                    created_at = datetime.fromtimestamp(stat.st_ctime, timezone.utc).isoformat()
+                    source_root = str(root)
+
+                    existing = self.cur.execute(
+                        "SELECT id FROM local_images WHERE image_uid = ? LIMIT 1",
+                        (image_uid,),
+                    ).fetchone()
+
+                    if existing is None:
+                        existing = self.cur.execute(
+                            "SELECT id FROM local_images WHERE file_path = ? LIMIT 1",
+                            (file_path,),
+                        ).fetchone()
+
+                    if existing:
+                        self.cur.execute('''
+                            UPDATE local_images
+                            SET
+                                image_uid = ?,
+                                file_name = ?,
+                                file_path = ?,
+                                location = ?,
+                                comment = ?,
+                                source_root = ?,
+                                size_bytes = ?,
+                                modified_at = ?,
+                                created_at = ?
+                            WHERE id = ?
+                        ''', (image_uid, file_name, file_path, location, comment, source_root, size_bytes, modified_at, created_at, existing[0]))
+                        updated += 1
+                    else:
+                        self.cur.execute('''
+                            INSERT INTO local_images (
+                                image_uid, file_path, file_name, location, comment,
+                                source_root, size_bytes, modified_at, created_at
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (image_uid, file_path, file_name, location, comment, source_root, size_bytes, modified_at, created_at))
+                        inserted += 1
+                except Exception:
+                    skipped += 1
+
+        self.conn.commit()
+        return {
+            "scanned": scanned,
+            "inserted": inserted,
+            "updated": updated,
+            "skipped": skipped,
+        }
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -221,6 +390,86 @@ class ArchiveManager:
             return True
 
         return False
+
+    def has_representative_image(self, url: str) -> bool:
+        """URL 레코드에 유효한 대표 이미지(첫 이미지 URL + 접근 가능)가 있는지 확인합니다."""
+        url = self._normalize_url(url)
+        sql = "SELECT images FROM posts WHERE url = ? LIMIT 1"
+        try:
+            self.cur.execute(sql, (url,))
+            row = self.cur.fetchone()
+            if row is None:
+                return False
+
+            images_raw = row[0] if not isinstance(row, sqlite3.Row) else row["images"]
+            if not images_raw:
+                return False
+
+            # JSON 문자열(list[dict|str])을 우선 파싱
+            try:
+                parsed = json.loads(images_raw)
+            except Exception:
+                parsed = None
+
+            first_url = ""
+            if isinstance(parsed, list) and parsed:
+                for entry in parsed:
+                    if isinstance(entry, dict):
+                        candidate = (entry.get("url") or "").strip()
+                    elif isinstance(entry, str):
+                        candidate = entry.strip()
+                    else:
+                        candidate = ""
+                    if candidate:
+                        first_url = candidate
+                        break
+
+            if not first_url:
+                first_url = str(images_raw).strip()
+            if not first_url:
+                return False
+
+            return self._is_image_url_reachable(first_url)
+
+        except sqlite3.Error as e:
+            print(f"❌ 대표 이미지 조회 에러: {e}")
+            return False
+
+    def _is_image_url_reachable(self, image_url: str) -> bool:
+        """대표 이미지 URL이 실제 접근 가능한지 확인합니다."""
+        target = (image_url or "").strip()
+        if not target:
+            return False
+
+        # data URI / 로컬 경로는 네트워크 검증 없이 존재로 간주
+        if target.startswith("data:image/") or target.startswith("/"):
+            return True
+
+        if target in self._image_url_health_cache:
+            return self._image_url_health_cache[target]
+
+        if not (target.startswith("http://") or target.startswith("https://")):
+            self._image_url_health_cache[target] = True
+            return True
+
+        try:
+            # 우선 HEAD로 빠르게 체크
+            resp = requests.head(target, timeout=5, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code == 405:
+                # HEAD 미지원 서버는 GET으로 폴백
+                resp = requests.get(target, timeout=8, stream=True, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+            ok = 200 <= resp.status_code < 400
+            self._image_url_health_cache[target] = ok
+            return ok
+        except Exception:
+            self._image_url_health_cache[target] = False
+            return False
+
+    def needs_content_refresh(self, url: str) -> bool:
+        """이미 아카이브되어 있으나 대표 이미지가 없는 경우 True를 반환합니다."""
+        if not self.is_archived(url):
+            return False
+        return not self.has_representative_image(url)
 
     def get_post_id_by_url(self, url: str):
         """URL로 post_id를 찾습니다."""

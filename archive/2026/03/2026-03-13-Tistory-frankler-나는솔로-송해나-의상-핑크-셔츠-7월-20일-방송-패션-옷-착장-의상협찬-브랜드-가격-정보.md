@@ -1,0 +1,18 @@
+---
+title: "나는솔로 송해나 의상 핑크 셔츠 7월 20일 방송 패션 옷 착장 의상협찬 브랜드 가격 정보"
+url: "https://frankler.tistory.com/1929"
+platform: "Tistory"
+media_name: "frankler"
+created_at: ""
+event_dates:
+category: ""
+tags:
+comments: ""
+keywords:
+crawler_version: "2.2"
+images:
+---
+
+# 나는솔로 송해나 의상 핑크 셔츠 7월 20일 방송 패션 옷 착장 의상협찬 브랜드 가격 정보
+
+(본문 없음)

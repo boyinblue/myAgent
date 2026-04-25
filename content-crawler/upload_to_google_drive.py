@@ -1,41 +1,62 @@
 import os
-import pickle
+import sys
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
+
+# Windows 콘솔 UTF-8 출력 설정
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # .env 파일 로드
 load_dotenv(os.path.join('..', '.env'))
 
-# 환경 변수에서 설정값 가져오기
-GOOGLE_KEY = os.getenv("GOOGLE_API_KEY")
-
 # 권한 범위 (파일 업로드 및 관리)
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 def get_gdrive_service():
-    creds = None
-    # 이전에 인증한 토큰이 있으면 로드
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
+    """OAuth2 Desktop Credentials로 Google Drive API 인증"""
+    CREDENTIAL_FILE = os.path.join('..', 'google_oauth2_credentials.json')
+    TOKEN_FILE = os.path.join('..', 'google_oauth2_upload_token.json')
     
-    # 인증 정보가 없거나 유효하지 않으면 로그인창 띄움
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+    if not os.path.exists(CREDENTIAL_FILE):
+        print("❌ google_oauth2_credentials.json 파일을 찾을 수 없습니다.")
+        print("프로젝트 루트에 OAuth2 Desktop JSON 파일을 저장하세요.")
+        return None
+    
+    try:
+        creds = None
+        if os.path.exists(TOKEN_FILE):
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-    return build('drive', 'v3', credentials=creds)
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_FILE, SCOPES)
+                creds = flow.run_local_server(port=0)
 
-def upload_files(local_directory, folder_id=None):
-    service = get_gdrive_service()
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as token:
+                token.write(creds.to_json())
+
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        print(f"❌ 인증 실패: {e}")
+        return None
+
+def upload_files(local_directory, folder_id=None, service=None):
+    if service is None:
+        service = get_gdrive_service()
+    
+    if not service:
+        print("❌ Google Drive 서비스 초기화 실패")
+        return
 
     print(f"")
     print(f"📁 '{local_directory}' 디렉토리의 파일을 구글 드라이브에 업로드합니다...")
@@ -50,7 +71,12 @@ def upload_files(local_directory, folder_id=None):
 
             # 1. 같은 이름의 파일이 있는지 검색
             query = f"name = '{filename}' and '{folder_id}' in parents and trashed = false"
-            response = service.files().list(q=query, fields="files(id)").execute()
+            response = service.files().list(
+                q=query, 
+                fields="files(id,name,capabilities/canEdit)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
             files = response.get('files', [])
 
             file_metadata = {'name': filename}
@@ -61,15 +87,35 @@ def upload_files(local_directory, folder_id=None):
 
             if len(files) > 1:
                 for file in files:
-                    service.files().delete(fileId=file['id']).execute()
-                    print(f"  [!] 중복 파일 삭제: {filename} ({file['id']})")
+                    can_edit = bool((file.get('capabilities') or {}).get('canEdit'))
+                    if not can_edit:
+                        print(f"  [!] 삭제 권한 없음, 건너뜀: {filename} ({file['id']})")
+                        continue
+                    try:
+                        service.files().delete(fileId=file['id'], supportsAllDrives=True).execute()
+                        print(f"  [!] 중복 파일 삭제: {filename} ({file['id']})")
+                    except HttpError as e:
+                        if 'insufficientFilePermissions' in str(e):
+                            print(f"  [!] 삭제 권한 부족, 건너뜀: {filename} ({file['id']})")
+                            continue
+                        raise
 
             file_metadata = {'name': filename, 'parents': [folder_id]}
-            file = service.files().create(body=file_metadata, media_body=media).execute()
-            print(f"  ✅ 완료! File ID: {file.get('id')}")
+            try:
+                file = service.files().create(
+                    body=file_metadata, 
+                    media_body=media,
+                    supportsAllDrives=True
+                ).execute()
+                print(f"  ✅ 완료! File ID: {file.get('id')}")
+            except HttpError as e:
+                if 'insufficientFilePermissions' in str(e):
+                    print("  ❌ 업로드 권한이 부족합니다. 공유 드라이브에서 '콘텐츠 관리자' 이상 권한이 필요합니다.")
+                    continue
+                raise
         
         else:
-            upload_files(file_path, folder_id)  # 하위 폴더 재귀적으로 처리
+            upload_files(file_path, folder_id, service=service)  # 하위 폴더 재귀적으로 처리
 
 if __name__ == '__main__':
     # 업로드할 로컬 경로 (예: C:/AI_Skills/)

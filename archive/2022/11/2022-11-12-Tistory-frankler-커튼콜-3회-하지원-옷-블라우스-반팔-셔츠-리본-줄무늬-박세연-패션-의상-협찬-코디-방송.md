@@ -1,59 +1,48 @@
 ---
-title: 커튼콜 3회 하지원 옷 블라우스 반팔 셔츠 리본 줄무늬 박세연 패션 의상 협찬 코디 방송 브랜드 착장 추천 패션정보
-url: https://frankler.tistory.com/3740
-created_at: '2022-11-12T20:05:26+09:00'
+title: "커튼콜 3회 하지원 옷 블라우스 반팔 셔츠 리본 줄무늬 박세연 패션 의상 협찬 코디 방송 브랜드 착장 추천 패션정보"
+url: "https://frankler.tistory.com/3740"
+platform: "Tistory"
+media_name: "frankler"
+created_at: "2022-11-12T20:05:26+09:00"
 event_dates:
-- '2022-11-12'
-category: ''
-tags: null
-platform_type: Tistory
-media_name: frankler
+category: ""
+tags: "null"
+comments: ""
+keywords:
+crawler_version: "2.2"
+images:
+  -
+      url: "https://blog.kakaocdn.net/dn/D84Lg/btrQZ3MHpLa/tDNal0uhk6RCxuTOdu9hS1/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "36104"
+      sha256: "4234f398df8695a97352bb3a52eccf1cdc8f88476df2d6a3fe94a802d8f455fe"
+  -
+      url: "https://blog.kakaocdn.net/dn/b97HAq/btrQ0HP5954/RBCg4wyOQEOBL8VsyWrMK0/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "112763"
+      sha256: "109b9ac01d5ca093142b2c0ece8635e205c6d883483e5df4cf2b54ed3cf3442d"
+  -
+      url: "https://blog.kakaocdn.net/dn/KEXtb/btrQ3TBQzri/Ir9QU0h9fYSTIKouDbgtU0/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "37524"
+      sha256: "3e5bc02f985c8e17f45c3cc8dc5d42ba38a1eabc0b7a07e3b87c290af66c8ea8"
+  -
+      url: "https://blog.kakaocdn.net/dn/dN92u5/btrQ0YKPv4l/VybLaqjURhLKRbUL9Otog0/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "36476"
+      sha256: "9bf7f269fdff2d7e5e6d414b44040a2d7477464d41f34a84837f6564ce8a7a0f"
+  -
+      url: "https://blog.kakaocdn.net/dn/CjHPl/btrQ1JGukNX/98Ju0CIhFCXiZtDh94OOK0/img.jpg"
+      description: ""
+      blog: "frankler"
+      size: "91460"
+      sha256: "4f5fd222d082a0e1c86394e1a5288b7c30f964263285094fe103f47e6c12d5db"
 ---
+
 # 커튼콜 3회 하지원 옷 블라우스 반팔 셔츠 리본 줄무늬 박세연 패션 의상 협찬 코디 방송 브랜드 착장 추천 패션정보
 
-<p><figure class="imagegridblock">
-  <div class="image-container"><span style="width: 48.4726%; margin-right: 10px;"><img height="250" src="https://blog.kakaocdn.net/dn/D84Lg/btrQZ3MHpLa/tDNal0uhk6RCxuTOdu9hS1/img.jpg" width="292" /></span><span style="width: 50.3647%;"><img height="412" src="https://blog.kakaocdn.net/dn/b97HAq/btrQ0HP5954/RBCg4wyOQEOBL8VsyWrMK0/img.jpg" width="500" /></span></div>
-</figure>
-<figure class="imagegridblock">
-  <div class="image-container"><span style="width: 48.1097%; margin-right: 10px;"><img height="208" src="https://blog.kakaocdn.net/dn/KEXtb/btrQ3TBQzri/Ir9QU0h9fYSTIKouDbgtU0/img.jpg" width="229" /></span><span style="width: 50.7275%;"><img height="230" src="https://blog.kakaocdn.net/dn/dN92u5/btrQ0YKPv4l/VybLaqjURhLKRbUL9Otog0/img.jpg" width="267" /></span></div>
-</figure>
-</p>
-<p style="text-align: center;"><span style="background-color: #ffffff; color: #555555;"><span style="color: #000000;"><span style="color: #000000;"><span style="color: #000000;"><span style="color: #262626;"><span>커튼콜 3회 하지원 옷 블라우스 반팔 셔츠 리본 줄무늬 박세연 패션<span>&nbsp;</span></span></span></span><span style="color: #000000;">의</span></span><span style="color: #000000;">상</span><span style="color: #000000;"><span><span><span><span>&nbsp;</span></span></span></span></span><span style="color: #000000;">협찬 코디 방송 브랜드 착장 추천 패션정보&nbsp;</span></span></span></p>
-<p style="text-align: center;"><span style="background-color: #ffffff; color: #555555;">☝</span>제품바로가기<span style="background-color: #ffffff; color: #555555;">☝</span></p>
-<p style="text-align: center;"><a href="https://www.farfetch.com/ar/shopping/women/alessandra-rich-striped-silk-sailor-blouse-item-18218706.aspx">Alessandra Rich</a></p>
-<p style="text-align: center;"><a href="https://www.farfetch.com/ar/shopping/women/alessandra-rich-striped-silk-sailor-blouse-item-18218706.aspx"><span style="background-color: #ffffff; color: #222222;">striped silk sailor blouse</span><span style="background-color: #ffffff; color: #222222;"></span></a></p>
-<p><figure class="imageblock alignCenter"><a href="https://www.farfetch.com/ar/shopping/women/alessandra-rich-striped-silk-sailor-blouse-item-18218706.aspx" target=""><img height="253" src="https://blog.kakaocdn.net/dn/CjHPl/btrQ1JGukNX/98Ju0CIhFCXiZtDh94OOK0/img.jpg" width="200" /></a></figure>
-</p>
-<p style="text-align: center;">이 내용이 도움이 되셨다면 더보기를 통해 드라마 패션 의상정보를 확인하세요!!</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;"><a href="https://frankler.tistory.com/category/%EC%9D%BC%EC%83%81%EC%A0%95%EB%B3%B4/%ED%8C%A8%EC%85%98%EC%A0%95%EB%B3%B4" style="background-color: #f24537; color: #fff; border-radius: 30px; padding: 16px 32px; font-size: 18px; font-weight: bold; text-decoration: none;">드라마 패션 더 보기</a></p>
-<p style="text-align: center;">&nbsp;</p>
-<figure contenteditable="false" id="og_1668251068608"><a href="https://frankler.tistory.com/3739" rel="noopener">
-<div class="og-image">&nbsp;</div>
-<div class="og-text">
-<p class="og-title">커튼콜 3회 하지원 옷 롱치마 박세연 패션 의상 협찬 코디 방송 브랜드 착장 추천 패션정보</p>
-<p class="og-desc">커튼콜 3회 하지원 옷 롱치마 박세연 패션 의상 협찬 코디 방송 브랜드 착장 추천 패션정보 ☝제품바로가기☝ 정제902 H 라인 포켓 슬릿 롱 스커트 이 내용이 도움이 되셨다면 더보기를 통해 드라</p>
-<p class="og-host">frankler.tistory.com</p>
-</div>
-</a></figure>
-<figure contenteditable="false" id="og_1668251058137"><a href="https://frankler.tistory.com/3704" rel="noopener">
-<div class="og-image">&nbsp;</div>
-<div class="og-text">
-<p class="og-title">금수저 드라마 6회 연우 핑크 블라우스 오여진 패션 옷 착장 의상 협찬 코디 드라마 옷 브랜드 추</p>
-<p class="og-desc">금수저 드라마 6회 연우 핑크 블라우스 오여진 패션 옷 착장 의상 협찬 코디 드라마 옷 브랜드 추천 얼마 데일리룩 셀럽 착용 정보 ☝제품바로가기☝ 핀코 실크 새틴 셔츠 265유로 이 내용이 도움</p>
-<p class="og-host">frankler.tistory.com</p>
-</div>
-</a></figure>
-<figure contenteditable="false" id="og_1668251083511"><a href="https://frankler.tistory.com/3664" rel="noopener">
-<div class="og-image">&nbsp;</div>
-<div class="og-text">
-<p class="og-title">작은아씨들 10회 패션 김고은 귀걸이 오인주 링 주얼리 옷 착장 의상 협찬 코디 브랜드 추천 얼마</p>
-<p class="og-desc">작은아씨들 10회 패션 김고은 귀걸이 오인주 링 주얼리 옷 착장 의상 협찬 코디 브랜드 추천 얼마 데일리룩 셀럽 드라마 패션착용 가격 ☝제품바로가기☝ EARRING-0036 /엘쁘 [작은아씨들 김고은 착</p>
-<p class="og-host">frankler.tistory.com</p>
-</div>
-</a></figure>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;"><a href="https://frankler.tistory.com/category/%EC%9D%BC%EC%83%81%EC%A0%95%EB%B3%B4/%ED%8C%A8%EC%85%98%EC%A0%95%EB%B3%B4" style="background-color: #f24537; color: #fff; border-radius: 30px; padding: 16px 32px; font-size: 18px; font-weight: bold; text-decoration: none;">드라마 패션 더 보기</a></p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">&nbsp;</p>
-<p style="text-align: center;">&nbsp;</p>
+(본문 없음)

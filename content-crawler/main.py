@@ -198,9 +198,12 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
 
             # 중복 확인
             if archive_mgr.is_archived(link):
-                print(f"[i] 이미 아카이브됨, 건너뜁니다: {link}")
-                post["new"] = False
-                continue
+                if archive_mgr.needs_content_refresh(link):
+                    print(f"[i] 대표 이미지 누락 항목 재갱신: {link}")
+                else:
+                    print(f"[i] 이미 아카이브됨, 건너뜁니다: {link}")
+                    post["new"] = False
+                    continue
 
             # 발견된 링크를 아카이브에 저장
             print(f"[*] 아카이브 저장 중: {title} ({link})")
@@ -263,7 +266,7 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
                     print(f"[!] 요약 생성 실패: {e}")
 
             # 이미지 리스트 생성
-            html_for_images = post.get("html") or content or ""
+            html_for_images = post.get("html") or content or summary or ""
             images = extract_images(html_for_images)
             if images is None:
                 images = []
@@ -561,6 +564,16 @@ def main():
         default=None,
         help="단건 URL만 아카이브 처리 (플랫폼 자동 판별)",
     )
+    parser.add_argument(
+        "--index-local-images",
+        action="store_true",
+        help="로컬 이미지 파일을 스캔하여 archive DB(local_images)에 저장",
+    )
+    parser.add_argument(
+        "--local-image-root",
+        action="append",
+        help="추가 로컬 이미지 스캔 루트 경로 (여러 번 지정 가능)",
+    )
 
     args = parser.parse_args()
 
@@ -587,9 +600,28 @@ def main():
     if not config:
         return
     
-    archive_root = config.get("archive_root", "./archive")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+
+    archive_root = config.get("archive_root", "archive")
+    if not os.path.isabs(archive_root):
+        archive_root = os.path.abspath(os.path.join(project_root, archive_root))
+
     raw_dir = config.get("raw_directory", ".raw")
+    if not os.path.isabs(raw_dir):
+        raw_dir = os.path.abspath(os.path.join(project_root, raw_dir))
+
     archive_mgr = ArchiveManager(archive_root)  # 아카이브 매니저 인스턴스 생성
+
+    def _index_local_images_once() -> None:
+        roots = [archive_root, raw_dir]
+        if args.local_image_root:
+            roots.extend(args.local_image_root)
+        result = archive_mgr.index_local_images(roots)
+        print(
+            "[+] 로컬 이미지 인덱싱 완료 "
+            f"(스캔 {result['scanned']} / 추가 {result['inserted']} / 갱신 {result['updated']} / 건너뜀 {result['skipped']})"
+        )
 
     # 단건 URL 모드
     if args.url:
@@ -603,6 +635,8 @@ def main():
         platform_type = result["platform_type"]
         media_name = result["media_name"]
         archive_posts([post], archive_mgr, platform_type=platform_type, media_name=media_name, raw_dir=raw_dir)
+        if args.index_local_images:
+            _index_local_images_once()
         print(f"[+] 단건 URL 아카이브 완료: {post.get('title', '제목 없음')}")
         return
 
@@ -617,6 +651,11 @@ def main():
         scheduler_config["archive_root"] = archive_root
         scheduler = DailyDigestScheduler(scheduler_config, notifier)
         scheduler.start()
+        return
+
+    if args.index_local_images and args.no_archive:
+        print("[*] 로컬 이미지 인덱싱 단독 실행")
+        _index_local_images_once()
         return
 
     # Archive Manager에서 "title", "platform", "media_name"이 하나라도 누락된 레코드가 있으면 다시 크롤링
@@ -682,6 +721,9 @@ def main():
             print("[!] 텔레그램이 설정되지 않아 에러를 전송할 수 없습니다.")
     elif error_collector.has_errors() and args.no_error_report:
         print("[i] 에러 리포팅이 비활성화되어 있으므로 텔레그램으로 전송하지 않습니다.")
+
+    if args.index_local_images:
+        _index_local_images_once()
 
 
 if __name__ == "__main__":

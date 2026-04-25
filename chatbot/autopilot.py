@@ -3,6 +3,8 @@ import os
 import runpy
 import sys
 import re
+import time
+import shlex
 import subprocess
 import shutil
 import sqlite3
@@ -15,6 +17,7 @@ import requests
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(ROOT_DIR)
 TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
+BOT_STARTED_AT = time.time()
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
@@ -126,99 +129,65 @@ def _extract_markdown_section(markdown_text: str, heading: str) -> str:
     return "\n".join(lines[start:end]).strip()
 
 
-def _compact_markdown(markdown_text: str) -> str:
-    compact_lines = []
-    for raw in (markdown_text or "").splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        if line.startswith("#"):
-            compact_lines.append(line)
-            continue
-        if line.startswith("-"):
-            compact_lines.append(line)
-            continue
-        if line.startswith("###"):
-            compact_lines.append(line)
-            continue
-        compact_lines.append(re.sub(r"\s+", " ", line))
-    return "\n".join(compact_lines).strip()
-
-
 def get_skills_prompt_max_chars() -> int:
-    raw = get_config_value(
+    value = get_config_value(
         "autopilot.skills_prompt_max_chars",
-        os.getenv("AUTOPILOT_SKILLS_MAX_CHARS", str(DEFAULT_SKILLS_PROMPT_MAX_CHARS)),
+        os.getenv("SKILLS_PROMPT_MAX_CHARS", DEFAULT_SKILLS_PROMPT_MAX_CHARS),
     )
     try:
-        value = int(raw)
-        return max(1000, min(value, 20000))
-    except Exception:
+        parsed = int(value)
+        return max(500, parsed)
+    except (TypeError, ValueError):
         return DEFAULT_SKILLS_PROMPT_MAX_CHARS
 
 
-def build_skills_context(skills_md: str, max_chars: int) -> str:
-    content = (skills_md or "").strip()
-    if not content:
+def build_skills_context(raw_skills_md: str, max_chars: int) -> str:
+    text = (raw_skills_md or "").strip()
+    if not text:
         return ""
-
-    if len(content) <= max_chars:
-        return content
-
-    selected_sections = []
-    for heading in ["## Output Contract", "## Skills", "## Examples", "## Config & Env"]:
-        section = _extract_markdown_section(content, heading)
-        if section:
-            selected_sections.append(section)
-
-    if not selected_sections:
-        compact = _compact_markdown(content)
-        return compact[:max_chars]
-
-    merged = "\n\n".join(selected_sections)
-    compact = _compact_markdown(merged)
-    if len(compact) <= max_chars:
-        return compact
-
-    tail_note = "\n\n[skills_context_truncated]"
-    return compact[: max_chars - len(tail_note)] + tail_note
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "\n...\n[TRUNCATED]"
 
 
 def ask_ollama(prompt: str, system_prompt: str, model: str = "gemma2:9b") -> str:
-    url = "http://localhost:11434/api/generate"
-    data = {
+    url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434") + "/api/chat"
+    payload = {
         "model": model,
-        "prompt": f"{system_prompt}\n\nUser task: {prompt}",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
         "stream": False,
     }
-    response = requests.post(url, json=data, timeout=120)
-    response.raise_for_status()
-    return response.json().get("response", "").strip()
+    try:
+        response = requests.post(url, json=payload, timeout=120)
+        response.raise_for_status()
+        data = response.json()
+        return str((data.get("message") or {}).get("content") or "").strip()
+    except Exception as exc:
+        raise RuntimeError(f"Ollama 요청 실패: {exc}") from exc
 
 
 def ask_gemini(prompt: str, system_prompt: str, model: str = "gemini-1.5-flash") -> str:
-    api_key = (get_shared_secret("GOOGLE_API_KEY") or "").strip()
+    api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
     if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY가 설정되지 않았습니다.")
+        raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    body = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": f"{system_prompt}\n\nUser task: {prompt}"
-                    }
-                ]
-            }
-        ]
+    data = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": prompt}]}],
     }
+    try:
+        response = requests.post(url, json=data, timeout=120)
+        response.raise_for_status()
+        body = response.json()
+    except Exception as exc:
+        raise RuntimeError(f"Gemini 요청 실패: {exc}") from exc
 
-    response = requests.post(url, json=body, timeout=120)
-    response.raise_for_status()
-    data = response.json()
 
-    candidates = data.get("candidates", [])
+    candidates = body.get("candidates", [])
     if not candidates:
         return ""
     parts = candidates[0].get("content", {}).get("parts", [])
@@ -349,95 +318,31 @@ def _has_search_intent(text: str) -> bool:
 
 def _has_issue_intent(text: str) -> bool:
     lower = (text or "").lower()
-    issue_terms = [
-        "이슈",
-        "issue",
-        "깃허브 이슈",
-        "github issue",
-    ]
-    create_terms = [
-        "등록",
-        "생성",
-        "작성",
-        "올려",
-        "만들",
-        "create",
-        "open",
-        "report",
-    ]
-    discomfort_terms = [
-        "불편",
-        "안돼",
-        "안 됨",
-        "문제",
-        "오류",
-        "버그",
-        "에러",
-        "개선",
-        "개선해줘",
-    ]
-
-    explicit_issue = any(term in lower for term in issue_terms)
-    create_request = any(term in lower for term in create_terms)
-    has_discomfort = any(term in lower for term in discomfort_terms)
-
-    if explicit_issue and create_request:
-        return True
-
-    if ("github" in lower or "깃허브" in lower) and (explicit_issue or has_discomfort) and create_request:
-        return True
-
-    return False
+    return any(k in lower for k in ["이슈", "issue", "버그", "문제 등록", "깃허브 이슈"])
 
 
 def _has_validate_intent(text: str) -> bool:
     lower = (text or "").lower()
-    keywords = [
-        "무결성",
-        "검증",
-        "누락",
-        "불완전",
-        "validate",
-        "integrity",
-        "check",
-    ]
-    return any(k in lower for k in keywords) and ("아카이브" in lower or "archive" in lower or "db" in lower.replace("database", "db"))
+    return any(k in lower for k in ["검증", "무결성", "validate", "유효성"])
 
 
 def _has_dashboard_launch_intent(text: str) -> bool:
     lower = (text or "").lower()
-    # 웹 대시보드 실행 관련 키워드
-    keywords = [
-        "웹페이지", "웹 페이지", "대시보드", "웹 대시보드",
-        "web dashboard", "web page", "dashboard", "webpage"
-    ]
-    actions = ["보여", "보여줘", "열", "열어", "열어줘", "시작", "실행"]
-    
-    # 웹/페이지 또는 대시보드 키워드 확인
-    has_webpage = any(k in lower for k in keywords)
-    has_action = "웹" in lower or "페이지" in lower or "대시보드" in lower or any(a in lower for a in actions)
-    
-    return has_webpage or has_action
+    actions = ["실행", "시작", "켜", "open", "launch", "start", "run"]
+    has_target = "웹" in lower or "대시보드" in lower or "dashboard" in lower
+    has_action = any(a in lower for a in actions)
+    return has_target and has_action
 
 
 def _has_dashboard_stop_intent(text: str) -> bool:
     lower = (text or "").lower()
-    # 웹 대시보드 종료 관련 키워드
-    keywords = [
-        "웹페이지", "웹 페이지", "대시보드", "웹 대시보드",
-        "web dashboard", "web page", "dashboard", "webpage"
-    ]
-    actions = ["종료", "중지", "닫", "닫아", "stop", "close", "shutdown"]
-    
-    has_webpage = any(k in lower for k in keywords)
+    actions = ["종료", "중지", "꺼", "stop", "close", "shutdown", "kill"]
+    has_target = "웹" in lower or "대시보드" in lower or "dashboard" in lower
     has_action = any(a in lower for a in actions)
-    
-    return has_webpage and has_action
+    return has_target and has_action
 
 
-def _extract_search_keyword(text: str) -> str:
-    """검색 요청 문장에서 실제 검색어를 휴리스틱으로 추출합니다."""
-    source = (text or "").strip()
+def _extract_search_keyword(source: str) -> str:
     if not source:
         return ""
 
@@ -634,16 +539,17 @@ def _get_command_help(command_name: str) -> str:
         "gdrive": """📌 /gdrive 명령어
 
 사용법:
-  /gdrive - 구글 드라이브 파일/폴더 탐색
+    /gdrive - 구글 드라이브 파일/폴더 탐색
+    /gdrive --dedupe - 중복 파일명 정리(최신 1개 유지)
+    /gdrive --folder-id <ID> - 특정 폴더 기준 탐색/정리
 
 사전 준비:
-  1. GDRIVE_SETUP.md 문서 참고
-  2. Google Cloud Console에서 서비스 계정 JSON 키 생성
-  3. 프로젝트 루트에 credentials.json으로 저장
+    1. Google Cloud Console에서 OAuth2 Desktop JSON 생성
+    2. 프로젝트 루트에 google_oauth2_credentials.json 저장
+    3. 최초 1회 인증: python tools/gdrive.py --init-auth
   
 ⚠️  주의:
-  - 'OAuth 2.0 Desktop' 앱이 아닌 '서비스 계정' 타입이어야 합니다
-  - google-api-python-client, google-auth 패키지 필요""",
+    - google-api-python-client, google-auth, google-auth-oauthlib 패키지 필요""",
 
         "shell": """📌 $ 쉘 명령어
 
@@ -679,6 +585,7 @@ def _get_slash_commands_help() -> str:
 /health - 시스템 상태 확인
 /ver - 버전 정보
 /gdrive - 구글 드라이브 탐색
+/calc <수식> - 수식 계산 (예: /calc 2*(3+4))
 /restart - 챗봇 재시작
 /save - 변경사항 커밋
 /help - 명령어 목록
@@ -690,11 +597,16 @@ $<명령어> - 쉘 명령어 직접 실행 (예: $pip install requests)"""
 def _get_health_status() -> str:
     """챗봇 및 시스템 상태 정보를 반환합니다."""
     lines = ["🏥 시스템 상태\n"]
-    
-    # 1. 챗봇 상태
+
     lines.append("✅ 챗봇: 실행 중")
-    
-    # 2. 대시보드 상태
+    try:
+        elapsed_seconds = max(0, int(time.time() - BOT_STARTED_AT))
+        hours, remainder = divmod(elapsed_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        lines.append(f"⏱️ 가동 시간: {hours}시간 {minutes}분 {seconds}초")
+    except Exception:
+        pass
+
     try:
         script_path = os.path.join(PROJECT_ROOT, "tools", "dashboard.py")
         if os.path.exists(script_path):
@@ -715,19 +627,16 @@ def _get_health_status() -> str:
             lines.append("❓ 대시보드: 스크립트 없음")
     except Exception:
         lines.append("❓ 대시보드: 상태 확인 실패")
-    
-    # 3. 디스크 용량
+
     try:
         usage = shutil.disk_usage(PROJECT_ROOT)
         total_gb = usage.total / (1024 ** 3)
-        used_gb = usage.used / (1024 ** 3)
         free_gb = usage.free / (1024 ** 3)
         percent = (usage.used / usage.total) * 100
         lines.append(f"💾 디스크: {free_gb:.1f}GB 여유 (전체 {total_gb:.1f}GB, 사용률 {percent:.1f}%)")
     except Exception as e:
         lines.append(f"❌ 디스크: 조회 실패 ({e})")
-    
-    # 4. 포스트 개수
+
     try:
         db_path = Path(PROJECT_ROOT) / "archive" / "archive_index.db"
         if db_path.exists():
@@ -741,20 +650,18 @@ def _get_health_status() -> str:
             lines.append("❓ 포스트: DB 파일 없음")
     except Exception as e:
         lines.append(f"❌ 포스트: 조회 실패 ({e})")
-    
+
     return "\n".join(lines)
 
 
 def _get_version_info() -> str:
     """버전 정보를 반환합니다."""
     lines = ["ℹ️ 버전 정보\n"]
-    
-    # Python 버전
+
     lines.append(f"🐍 Python: {sys.version.split()[0]}")
-    
-    # Git 커밋 정보
+
     try:
-        result = subprocess.run(
+        commit_proc = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
@@ -762,28 +669,24 @@ def _get_version_info() -> str:
             cwd=PROJECT_ROOT,
             check=False,
         )
-        if result.returncode == 0:
-            commit_hash = result.stdout.strip()
-            lines.append(f"📌 Git Commit: {commit_hash}")
-        
-        # Git 브랜치
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        branch_proc = subprocess.run(
+            ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
             timeout=5,
             cwd=PROJECT_ROOT,
             check=False,
         )
-        if result.returncode == 0:
-            branch = result.stdout.strip()
-            lines.append(f"🌿 Git Branch: {branch}")
+
+        commit_hash = (commit_proc.stdout or "").strip() if commit_proc.returncode == 0 else "unknown"
+        branch_name = (branch_proc.stdout or "").strip() if branch_proc.returncode == 0 else "unknown"
+
+        lines.append(f"🧾 Git Commit: {commit_hash}")
+        lines.append(f"🌿 Git Branch: {branch_name}")
     except Exception:
         lines.append("❓ Git: 정보 조회 실패")
-    
-    # 프로젝트 경로
+
     lines.append(f"📂 Project: {PROJECT_ROOT}")
-    
     return "\n".join(lines)
 
 
@@ -888,10 +791,18 @@ def _handle_markdown_command(command: str, args: str, skills_md: str) -> bool:
         return True
 
     user_args = (args or "").strip()
-    render_prompt = (
-        f"사용자가 '/{command}' 명령을 요청했습니다. 아래 markdown 문서를 기반으로 한국어로 안내하세요. "
-        "문서에 없는 기능을 추가하지 말고, 문서 내용을 간결하고 읽기 쉽게 정리해 답변하세요."
-    )
+    is_python_script_mode = "[RESPONSE_MODE] python_script" in markdown_text
+    if is_python_script_mode:
+        render_prompt = (
+            f"사용자가 '/{command}' 명령을 요청했습니다. 아래 markdown 문서를 기반으로 작업을 수행할 수 있는 파이썬 스크립트를 작성하세요. "
+            "반드시 실행 가능한 Python 코드만 반환하고, 첫 줄은 '# script_name.py' 형식의 파일명 주석으로 시작하세요. "
+            "마크다운 설명, 코드펜스, 부가 텍스트는 금지합니다."
+        )
+    else:
+        render_prompt = (
+            f"사용자가 '/{command}' 명령을 요청했습니다. 아래 markdown 문서를 기반으로 한국어로 안내하세요. "
+            "문서에 없는 기능을 추가하지 말고, 문서 내용을 간결하고 읽기 쉽게 정리해 답변하세요."
+        )
     if user_args:
         render_prompt += f"\n\n추가 사용자 입력: {user_args}"
 
@@ -953,7 +864,13 @@ def _run_tools_dashboard_command(subcommand: str) -> str:
     try:
         data = json.loads(output)
         if isinstance(data, dict):
+            success = data.get("success", False)
             message = str(data.get("message", "")).strip()
+            
+            # 대시보드 시작 성공 시: 링크만 간단히 표시
+            if success and normalized == "start" and message:
+                return message
+            
             if message:
                 return message
             return output
@@ -963,52 +880,38 @@ def _run_tools_dashboard_command(subcommand: str) -> str:
     return output
 
 
-def _run_gdrive_command() -> str:
-    """tools/gdrive.py를 실행해 구글 드라이브를 탐색합니다."""
+def _run_gdrive_direct(raw_args: str = "") -> str:
+    """/gdrive를 LLM 경유 없이 직접 실행합니다."""
     script_path = os.path.join(PROJECT_ROOT, "tools", "gdrive.py")
     if not os.path.exists(script_path):
         return f"[ERROR] gdrive 스크립트를 찾을 수 없습니다: {script_path}"
 
     try:
+        user_args = shlex.split((raw_args or "").strip()) if (raw_args or "").strip() else []
+    except ValueError:
+        user_args = (raw_args or "").split()
+
+    cmd = [sys.executable, script_path, "--max-depth", "2", "--max-items", "80", *user_args]
+
+    try:
         proc = subprocess.run(
-            [sys.executable, script_path],
+            cmd,
             capture_output=True,
             text=True,
             encoding='utf-8',
             errors='replace',
-            timeout=90,
+            timeout=150,
             cwd=PROJECT_ROOT,
             check=False,
         )
+    except subprocess.TimeoutExpired:
+        return "⏱️ /gdrive 실행 시간이 초과되었습니다. python tools/gdrive.py --init-auth 후 다시 시도하세요."
     except Exception as exc:
         return f"[ERROR] /gdrive 실행 실패: {exc}"
 
-    output = (proc.stdout or "").strip()
-    stderr_output = (proc.stderr or "").strip()
-    if not output:
-        output = stderr_output
+    output = (proc.stdout or "").strip() or (proc.stderr or "").strip()
+    return output or "[ERROR] /gdrive 실행 결과가 비어 있습니다."
 
-    if not output:
-        return "[ERROR] /gdrive 실행 결과가 비어 있습니다."
-
-    if "ModuleNotFoundError" in output and "google" in output:
-        return (
-            "❌ Google Drive 의존성 패키지가 설치되지 않았습니다.\n"
-            "다음 명령으로 설치하세요:\n"
-            "pip install google-api-python-client google-auth"
-        )
-
-    if "credentials.json" in output and ("설정이 필요합니다" in output or "존재하지 않습니다" in output):
-        return (
-            "❌ credentials.json 파일이 없습니다.\n"
-            "Google Drive API 설정 가이드를 참고하세요:\n"
-            "1. GDRIVE_SETUP.md 문서 확인\n"
-            "2. Google Cloud Console에서 서비스 계정 키 다운로드\n"
-            "3. 파일을 credentials.json으로 프로젝트 루트에 저장\n"
-            "자세한 내용은 /help gdrive를 입력하세요."
-        )
-
-    return output
 
 
 def decide_action(user_prompt: str, skills_md: str) -> dict:
@@ -1075,7 +978,14 @@ def extract_python_code(raw_text: str) -> str | None:
 
 
 def execute_script(script_path: str):
-    runpy.run_path(script_path, run_name="__main__")
+    original_cwd = os.getcwd()
+    try:
+        script_dir = os.path.dirname(os.path.abspath(script_path))
+        if script_dir:
+            os.chdir(script_dir)
+        runpy.run_path(script_path, run_name="__main__")
+    finally:
+        os.chdir(original_cwd)
 
 
 def _send_telegram_message(message: str) -> bool:
@@ -1224,7 +1134,7 @@ def autopilot(user_prompt: str):
                 return
 
         if command == "gdrive":
-            print(_run_gdrive_command())
+            print(_run_gdrive_direct(args))
             return
 
         if command == "issue":

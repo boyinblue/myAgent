@@ -101,8 +101,11 @@ class TistoryBlogCrawler:
             ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
             for loc in root.findall(".//sm:loc", ns):
                 href = loc.text.strip()
-                if self.archive_mgr and not self.archive_mgr.is_archived(href):
-                    post = self.parse_url(href)
+                if self.archive_mgr:
+                    if self.archive_mgr.is_archived(href) and not self.archive_mgr.needs_content_refresh(href):
+                        continue
+                post = self.parse_url(href)
+                if post:
                     posts.append(post)
             print(f"[i] 사이트맵에서 {len(posts)}개 링크를 찾았습니다.")
         except Exception as e:
