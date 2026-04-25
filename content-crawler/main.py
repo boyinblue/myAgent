@@ -209,6 +209,14 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
             if archive_mgr.is_archived(link):
                 if archive_mgr.needs_content_refresh(link):
                     print(f"[i] 대표 이미지 누락 항목 재갱신: {link}")
+                elif archive_mgr.needs_rearchive(
+                    link,
+                    title=title,
+                    platform_type=platform_type,
+                    media_name=media_name,
+                    created_at=published,
+                ):
+                    print(f"[i] 메타데이터가 갱신되어 재아카이브합니다: {link}")
                 else:
                     print(f"[i] 이미 아카이브됨, 건너뜁니다: {link}")
                     post["new"] = False
@@ -266,7 +274,8 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
 
             # ollama를 이용한 요약 시도
             summary_text = ""
-            if content:
+            is_private_post = any(str(tag).strip().lower() in {"__private__", "private"} for tag in tags)
+            if content and not is_private_post:
                 try:
                     summary_text = archive_mgr.summarize_with_ollama(content) or ""
                     if summary_text:
@@ -366,6 +375,7 @@ def crawl_naver_blog(config: Dict, args, archive_mgr=None):
             request_interval_min=request_interval_min,
             request_interval_max=request_interval_max,
             archive_mgr=archive_mgr,
+            crawler_version=CRAWLER_VERSION,
         )
         posts = crawler.crawl(
             max_posts=args.max_posts,
@@ -405,7 +415,12 @@ def crawl_tistory_blogs(config: Dict, args, archive_mgr=None):
         print(f"\n[*] 티스토리 블로그 크롤링 시작 ({blog_name}: {blog_url})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = TistoryBlogCrawler(blog_url, request_interval=request_interval, archive_mgr=archive_mgr)
+        crawler = TistoryBlogCrawler(
+            blog_url,
+            request_interval=request_interval,
+            archive_mgr=archive_mgr,
+            crawler_version=CRAWLER_VERSION,
+        )
         posts = crawler.crawl(max_posts=args.max_posts, archive_mgr=archive_mgr)
 
         if posts:
@@ -438,7 +453,12 @@ def crawl_github_pages(config: Dict, args, archive_mgr=None):
         print(f"\n[*] GitHub Pages 크롤링 시작 ({blog_name}: {blog_url})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = GitHubPagesCrawler(blog_url, request_interval=request_interval, archive_mgr=archive_mgr)
+        crawler = GitHubPagesCrawler(
+            blog_url,
+            request_interval=request_interval,
+            archive_mgr=archive_mgr,
+            crawler_version=CRAWLER_VERSION,
+        )
         posts = crawler.crawl(max_posts=args.max_posts)
 
         if posts:
@@ -472,7 +492,13 @@ def crawl_youtube(config: Dict, args, archive_mgr=None):
         print(f"\n[*] YouTube 채널 크롤링 시작 ({channel_name}: {channel_url}, ID: {channel_id})")
         print(f"[*] 요청 간격: {request_interval}초")
 
-        crawler = YouTubeCrawler(channel_url=channel_url, channel_id=channel_id, request_interval=request_interval, archive_mgr=archive_mgr)
+        crawler = YouTubeCrawler(
+            channel_url=channel_url,
+            channel_id=channel_id,
+            request_interval=request_interval,
+            archive_mgr=archive_mgr,
+            crawler_version=CRAWLER_VERSION,
+        )
         videos = crawler.crawl(max_videos=args.max_posts)
 
         if videos:
@@ -621,6 +647,9 @@ def main():
         raw_dir = os.path.abspath(os.path.join(project_root, raw_dir))
 
     archive_mgr = ArchiveManager(archive_root)  # 아카이브 매니저 인스턴스 생성
+    backfilled_versions = archive_mgr.backfill_crawler_versions()
+    if backfilled_versions:
+        print(f"[+] 기존 아카이브 crawler_version 역채움 완료: {backfilled_versions}건")
 
     def _index_local_images_once() -> None:
         roots = [archive_root, raw_dir]
