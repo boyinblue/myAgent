@@ -510,7 +510,6 @@ def api_trigger_crawl():
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
     
-    # GitHub Actions workflow_dispatch 트리거
     import requests
     
     github_token = os.getenv('GITHUB_TOKEN')
@@ -520,19 +519,27 @@ def api_trigger_crawl():
     if not github_token:
         return jsonify({'error': 'GitHub token not configured'}), 500
     
-    url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches'
+    # 요청 본문에서 선택적 URL 파라미터 추출
+    body = request.get_json(silent=True) or {}
+    target_url = body.get('url', '').strip()
+    
+    api_url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches'
     headers = {
         'Authorization': f'token {github_token}',
         'Accept': 'application/vnd.github.v3+json'
     }
-    data = {'ref': 'main'}
+    data = {
+        'ref': 'main',
+        'inputs': {'url': target_url},  # 빈 문자열이면 전체 크롤링
+    }
     
     try:
-        resp = requests.post(url, headers=headers, json=data)
+        resp = requests.post(api_url, headers=headers, json=data)
         resp.raise_for_status()
-        return jsonify({'success': True, 'message': '크롤링이 시작되었습니다.'})
+        msg = f'단건 URL 크롤링이 시작되었습니다: {target_url}' if target_url else '전체 크롤링이 시작되었습니다.'
+        return jsonify({'success': True, 'message': msg})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'detail': getattr(e, 'response', None) and e.response.text}), 500
 
 if __name__ == '__main__':
     # 개발 환경에서는 직접 실행

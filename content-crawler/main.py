@@ -20,6 +20,15 @@ from typing import List, Dict
 from utils.secrets import load_environment
 load_environment()
 
+# Windows 콘솔 UTF-8 출력 설정 (한글 출력 오류 방지)
+# 주의: reconfigure를 사용하면 기존 stdout/stderr를 닫지 않음
+if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # UTF-8 설정 실패해도 계속 진행
+
 # 로컬 모듈 import
 from crawlers.naver_blog import NaverBlogCrawler
 from crawlers.tistory_blog import TistoryBlogCrawler
