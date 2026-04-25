@@ -502,7 +502,21 @@
                 <option value="">전체 플랫폼</option>
             </select>
             <button onclick="searchPosts()">🔍 검색</button>
-            <button onclick="triggerCrawl()">🔄 크롤링 실행</button>
+            <button onclick="showCrawlModal()">🔄 크롤링 실행</button>
+        </div>
+
+        <!-- 크롤링 모달 -->
+        <div id="crawlModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+            <div style="background:#fff; border-radius:12px; padding:28px; width:480px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                <h3 style="margin:0 0 16px; font-size:1.1rem;">🔄 크롤링 실행</h3>
+                <p style="margin:0 0 12px; color:#555; font-size:0.9rem;">URL을 입력하면 단건 크롤링, 비워두면 전체 크롤링을 실행합니다.</p>
+                <input type="url" id="crawlUrlInput" placeholder="https://example.tistory.com/123 (선택사항)"
+                    style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem; margin-bottom:16px;">
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button onclick="closeCrawlModal()" style="padding:8px 18px; border:1px solid #ddd; background:#f5f5f5; border-radius:8px; cursor:pointer;">취소</button>
+                    <button onclick="triggerCrawl()" style="padding:8px 18px; background:#4285f4; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">🚀 실행</button>
+                </div>
+            </div>
         </div>
 
         <div class="calendar-panel" id="calendarPanel" style="display:none;">
@@ -917,16 +931,38 @@
             loadPosts(1);
         }
         
+        // 크롤링 모달
+        function showCrawlModal() {
+            const modal = document.getElementById('crawlModal');
+            modal.style.display = 'flex';
+            setTimeout(() => document.getElementById('crawlUrlInput').focus(), 50);
+        }
+
+        function closeCrawlModal() {
+            document.getElementById('crawlModal').style.display = 'none';
+            document.getElementById('crawlUrlInput').value = '';
+        }
+
         // 크롤링 트리거
         async function triggerCrawl() {
-            if (!confirm('크롤링을 시작하시겠습니까? (GitHub Actions 워크플로가 실행됩니다)')) {
-                return;
-            }
-            
+            const urlInput = document.getElementById('crawlUrlInput');
+            const targetUrl = urlInput ? urlInput.value.trim() : '';
+            const confirmMsg = targetUrl
+                ? `아래 URL을 크롤링하시겠습니까?\n\n${targetUrl}`
+                : '전체 크롤링을 시작하시겠습니까? (GitHub Actions 워크플로가 실행됩니다)';
+
+            if (!confirm(confirmMsg)) return;
+            closeCrawlModal();
+
             try {
-                const resp = await fetch('/api/trigger-crawl', { method: 'POST' });
+                const body = targetUrl ? JSON.stringify({ url: targetUrl }) : '{}';
+                const resp = await fetch('/api/trigger-crawl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body,
+                });
                 const data = await resp.json();
-                
+
                 if (data.success) {
                     alert('✅ ' + data.message);
                 } else {
