@@ -820,6 +820,26 @@ class ArchiveManager:
         if duplicate_groups:
             self.conn.commit()
 
+        # 2단계: URL 매칭에서 누락된 -dupN.md 파일 패턴 기반 정리
+        import re as _re
+        dup_pattern = _re.compile(r'^(.+)-dup\d+\.md$')
+        for md_file in sorted(archive_root_path.rglob("*.md")):
+            m = dup_pattern.match(md_file.name)
+            if not m:
+                continue
+            canonical_name = m.group(1) + ".md"
+            canonical_path = md_file.parent / canonical_name
+            if canonical_path.exists():
+                try:
+                    md_file.unlink()
+                    deleted_files.append(str(md_file.resolve()))
+                    group_lines.append(f"URL\t(pattern-based)")
+                    group_lines.append(f"KEEP\t{canonical_path.resolve()}")
+                    group_lines.append(f"DELETE\t{md_file.resolve()}")
+                    group_lines.append("")
+                except Exception as delete_error:
+                    group_lines.append(f"DELETE_FAILED\t{md_file.resolve()}:{delete_error}")
+
         with open(report_path, "w", encoding="utf-8") as report_file:
             report_file.write(f"duplicate_groups\t{len(duplicate_groups)}\n")
             report_file.write(f"deleted_files\t{len(deleted_files)}\n")
