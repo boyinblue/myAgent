@@ -4,7 +4,7 @@
 import os
 import sys
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from pathlib import Path
 
@@ -94,6 +94,102 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+# DATE_EXPR: published_date이 없거나 'None' 문자열이면 created_at 사용
+DATE_EXPR = "date(COALESCE(NULLIF(published_date, ''), NULLIF(published_date, 'None'), created_at))"
+
+
+def _build_posts_select_sql(conn):
+    """posts 테이블에서 사용 가능한 컬럼으로 SELECT 구문 생성"""
+    rows = conn.execute("PRAGMA table_info(posts)").fetchall()
+    columns = {row['name'] for row in rows}
+
+    base_columns = [
+        'id',
+        'title',
+        'url',
+        'platform',
+        'media_name',
+        'published_date',
+        'created_at',
+        'keywords',
+        'tags',
+    ]
+
+    select_parts = [f'"{col}"' for col in base_columns if col in columns]
+
+    image_candidates = [
+        'representative_image',
+        'thumbnail_url',
+        'thumbnail',
+        'image_url',
+        'image',
+        'og_image',
+    ]
+    image_col = next((col for col in image_candidates if col in columns), None)
+    if image_col:
+        select_parts.append(f'"{image_col}" AS representative_image')
+    else:
+        select_parts.append("'' AS representative_image")
+
+    # 요약 필드가 있으면 사용하고, 없으면 빈 문자열로 내려준다.
+    if 'summary' in columns:
+        select_parts.append('"summary"')
+    else:
+        select_parts.append("'' AS summary")
+
+    return ', '.join(select_parts)
+
+
+def _build_search_platform_where(search, platform):
+    where_clauses = []
+    params = []
+
+    if search:
+        where_clauses.append('(title LIKE ? OR keywords LIKE ? OR tags LIKE ?)')
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+
+    if platform:
+        where_clauses.append('platform = ?')
+        params.append(platform)
+
+    return where_clauses, params
+
+
+def _build_calendar_day_map(rows):
+    """날짜별 count / titles(최대 3개)로 재구성"""
+    days = {}
+    for row in rows:
+        day = row['day']
+        if not day:
+            continue
+
+        if day not in days:
+            days[day] = {'count': 0, 'titles': []}
+
+        days[day]['count'] += 1
+
+        if len(days[day]['titles']) < 3:
+            days[day]['titles'].append({
+                'title': row['title'] or '(제목 없음)',
+                'url': row['url'] or '',
+            })
+
+    return days
+
+
+def _to_post_preview(row):
+    return {
+        'id': row.get('id'),
+        'title': row.get('title') or '(제목 없음)',
+        'url': row.get('url') or '',
+        'platform': row.get('platform') or '',
+        'media_name': row.get('media_name') or '',
+        'published_date': row.get('published_date') or '',
+        'created_at': row.get('created_at') or '',
+        'representative_image': row.get('representative_image') or '',
+    }
+
 @app.route('/')
 def index():
     """접속 토큰 검증"""
@@ -170,23 +266,23 @@ def api_posts():
     per_page = int(request.args.get('per_page', 20))
     search = request.args.get('search', '').strip()
     platform = request.args.get('platform', '').strip()
+    published_on = request.args.get('published_on', '').strip()
     
     conn = get_db_connection()
     if not conn:
         return jsonify({'error': 'Database not found'}), 500
     
     try:
+        select_sql = _build_posts_select_sql(conn)
+
         # 기본 쿼리
-        where_clauses = []
-        params = []
-        
-        if search:
-            where_clauses.append('(title LIKE ? OR keywords LIKE ? OR tags LIKE ?)')
-            params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
-        
-        if platform:
-            where_clauses.append('platform = ?')
-            params.append(platform)
+        where_clauses, params = _build_search_platform_where(search, platform)
+        # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
+        where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
+
+        if published_on:
+            where_clauses.append(f"{DATE_EXPR} = date(?)")
+            params.append(published_on)
         
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
         
@@ -197,7 +293,7 @@ def api_posts():
         # 페이징된 결과
         offset = (page - 1) * per_page
         posts_sql = f'''
-            SELECT id, title, url, platform, media_name, published_date, created_at, keywords, tags
+            SELECT {select_sql}
             FROM posts 
             WHERE {where_sql}
             ORDER BY published_date DESC, created_at DESC
@@ -211,6 +307,199 @@ def api_posts():
             'page': page,
             'per_page': per_page,
             'posts': [dict(row) for row in posts]
+        })
+    finally:
+        conn.close()
+
+
+@app.route('/api/calendar')
+def api_calendar():
+    """월별 캘린더 집계 API (날짜별 count + 상위 3개 제목)"""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    now = datetime.now()
+    year = int(request.args.get('year', now.year))
+    month = int(request.args.get('month', now.month))
+    search = request.args.get('search', '').strip()
+    platform = request.args.get('platform', '').strip()
+
+    if month < 1 or month > 12:
+        return jsonify({'error': 'Invalid month'}), 400
+
+    if month == 12:
+        next_year, next_month = year + 1, 1
+    else:
+        next_year, next_month = year, month + 1
+
+    month_start = f'{year:04d}-{month:02d}-01'
+    next_month_start = f'{next_year:04d}-{next_month:02d}-01'
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not found'}), 500
+
+    try:
+        where_clauses, params = _build_search_platform_where(search, platform)
+        where_clauses.insert(0, f"{DATE_EXPR} >= date(?)")
+        where_clauses.insert(1, f"{DATE_EXPR} < date(?)")
+        # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
+        where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
+        params = [month_start, next_month_start] + params
+        where_sql = ' AND '.join(where_clauses)
+
+        rows = conn.execute(
+            f'''
+            SELECT
+                {DATE_EXPR} AS day,
+                title,
+                url
+            FROM posts
+            WHERE {where_sql}
+            ORDER BY day ASC, datetime(COALESCE(NULLIF(published_date, ''), created_at)) DESC
+            ''',
+            params,
+        ).fetchall()
+
+        days = _build_calendar_day_map(rows)
+
+        return jsonify({
+            'year': year,
+            'month': month,
+            'days': days,
+        })
+    finally:
+        conn.close()
+
+
+@app.route('/api/calendar/week')
+def api_calendar_week():
+    """주간 캘린더 API (7일)"""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    search = request.args.get('search', '').strip()
+    platform = request.args.get('platform', '').strip()
+    reference_date_str = request.args.get('date', '').strip()
+
+    if reference_date_str:
+        try:
+            ref_date = datetime.strptime(reference_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    else:
+        ref_date = datetime.now().date()
+
+    week_start = ref_date - timedelta(days=ref_date.weekday())
+    week_end = week_start + timedelta(days=6)
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not found'}), 500
+
+    try:
+        where_clauses, params = _build_search_platform_where(search, platform)
+        where_clauses.insert(0, f"{DATE_EXPR} >= date(?)")
+        where_clauses.insert(1, f"{DATE_EXPR} <= date(?)")
+        # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
+        where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
+        params = [week_start.isoformat(), week_end.isoformat()] + params
+        where_sql = ' AND '.join(where_clauses)
+
+        rows = conn.execute(
+            f'''
+            SELECT
+                {DATE_EXPR} AS day,
+                title,
+                url
+            FROM posts
+            WHERE {where_sql}
+            ORDER BY day ASC, datetime(COALESCE(NULLIF(published_date, ''), created_at)) DESC
+            ''',
+            params,
+        ).fetchall()
+
+        day_map = _build_calendar_day_map(rows)
+        ordered_days = []
+        for offset in range(7):
+            current = week_start + timedelta(days=offset)
+            key = current.isoformat()
+            info = day_map.get(key, {'count': 0, 'titles': []})
+            ordered_days.append({
+                'date': key,
+                'count': info['count'],
+                'titles': info['titles'],
+            })
+
+        return jsonify({
+            'week_start': week_start.isoformat(),
+            'week_end': week_end.isoformat(),
+            'days': ordered_days,
+        })
+    finally:
+        conn.close()
+
+
+@app.route('/api/discover')
+def api_discover():
+    """달력 하단 추천 목록 API (몇 년 전 오늘 + 랜덤)"""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    search = request.args.get('search', '').strip()
+    platform = request.args.get('platform', '').strip()
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not found'}), 500
+
+    try:
+        select_sql = _build_posts_select_sql(conn)
+        today = datetime.now().date()
+        md = today.strftime('%m-%d')
+        current_year = today.strftime('%Y')
+
+        where_clauses, base_params = _build_search_platform_where(search, platform)
+
+        history_where = [
+            "strftime('%m-%d', " + DATE_EXPR + ") = ?",
+            "strftime('%Y', " + DATE_EXPR + ") < ?",
+            "title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')",
+        ] + where_clauses
+        history_params = [md, current_year] + base_params
+
+        random_where = ["title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')"]
+        if where_clauses:
+            random_where.extend(where_clauses)
+        else:
+            random_where.append('1=1')
+        random_params = base_params[:]
+
+        history_rows = conn.execute(
+            f'''
+            SELECT {select_sql}
+            FROM posts
+            WHERE {' AND '.join(history_where)}
+            ORDER BY {DATE_EXPR} DESC
+            LIMIT 3
+            ''',
+            history_params,
+        ).fetchall()
+
+        random_rows = conn.execute(
+            f'''
+            SELECT {select_sql}
+            FROM posts
+            WHERE {' AND '.join(random_where)}
+            ORDER BY RANDOM()
+            LIMIT 3
+            ''',
+            random_params,
+        ).fetchall()
+
+        return jsonify({
+            'today_history': [_to_post_preview(dict(row)) for row in history_rows],
+            'random_posts': [_to_post_preview(dict(row)) for row in random_rows],
         })
     finally:
         conn.close()

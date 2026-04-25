@@ -48,7 +48,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
-            padding: 30px;
+            padding: 20px 30px;
             background: #f8f9fa;
         }
         
@@ -79,6 +79,21 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .view-toggle button {
+            flex: 1;
+            max-width: 160px;
+        }
+
+        .view-toggle button.active {
+            background: #212529;
         }
         
         .search-box {
@@ -212,8 +227,235 @@
         }
         
         .chart-container {
-            padding: 30px;
+            padding: 20px 30px 30px;
             background: white;
+        }
+
+        .stats-panel {
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .calendar-panel {
+            padding: 14px 20px 18px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .calendar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .calendar-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #343a40;
+        }
+
+        .calendar-nav {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .calendar-range-toggle {
+            display: flex;
+            gap: 6px;
+        }
+
+        .calendar-range-toggle button {
+            padding: 8px 14px;
+            font-size: 12px;
+        }
+
+        .calendar-range-toggle button.active {
+            background: #212529;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .calendar-weekday {
+            text-align: center;
+            color: #6c757d;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 8px 0;
+            text-transform: uppercase;
+        }
+
+        .calendar-day {
+            min-height: 72px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 6px;
+            background: #fff;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .calendar-day:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.18);
+        }
+
+        .calendar-day.empty {
+            background: #f8f9fa;
+            cursor: default;
+            border-style: dashed;
+        }
+
+        .calendar-day.selected {
+            border-color: #4954cc;
+            background: #eef0ff;
+        }
+
+        .calendar-day-number {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: #212529;
+            margin-bottom: 3px;
+        }
+
+        .calendar-day-count {
+            display: inline-block;
+            font-size: 11px;
+            color: #4954cc;
+            background: #e9ecff;
+            border-radius: 999px;
+            padding: 1px 7px;
+            margin-bottom: 4px;
+        }
+
+        .calendar-day-titles {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .calendar-day-title {
+            font-size: 10px;
+            color: #495057;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .calendar-day-title a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .calendar-day-title a:hover {
+            text-decoration: underline;
+        }
+
+        .discover-panel {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .discover-card {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 10px;
+            background: #fafbff;
+        }
+
+        .discover-card h4 {
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #4954cc;
+        }
+
+        .discover-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 6px;
+        }
+
+        .discover-list li {
+            font-size: 12px;
+            color: #495057;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .discover-list a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .discover-list a:hover {
+            text-decoration: underline;
+        }
+
+        .post-layout {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .post-thumb {
+            width: 120px;
+            height: 84px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            background: #f1f3f5;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #868e96;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .post-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .post-content {
+            min-width: 0;
+        }
+
+        @media (max-width: 768px) {
+            .post-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .post-thumb {
+                width: 100%;
+                height: 160px;
+            }
+
+            .discover-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .calendar-day {
+                min-height: 64px;
+            }
         }
         
         canvas {
@@ -228,32 +470,69 @@
             <p>콘텐츠 크롤링 관리 및 통계</p>
         </header>
         
-        <div class="stats">
-            <div class="stat-card">
-                <h3>전체 포스트</h3>
-                <div class="value" id="totalPosts">-</div>
+        <div class="stats-panel" id="statsPanel" style="display:none;">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>전체 포스트</h3>
+                    <div class="value" id="totalPosts">-</div>
+                </div>
+                <div class="stat-card">
+                    <h3>최근 30일</h3>
+                    <div class="value" id="recentPosts">-</div>
+                </div>
+                <div class="stat-card">
+                    <h3>플랫폼 수</h3>
+                    <div class="value" id="platformCount">-</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <h3>최근 30일</h3>
-                <div class="value" id="recentPosts">-</div>
+            
+            <div class="chart-container">
+                <canvas id="platformChart"></canvas>
             </div>
-            <div class="stat-card">
-                <h3>플랫폼 수</h3>
-                <div class="value" id="platformCount">-</div>
-            </div>
-        </div>
-        
-        <div class="chart-container">
-            <canvas id="platformChart"></canvas>
         </div>
         
         <div class="controls">
+            <div class="view-toggle">
+                <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
+                <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
+                <button id="statsToggleBtn" onclick="toggleStatsPanel()">📊 통계 보기</button>
+            </div>
             <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
             <select id="platformFilter">
                 <option value="">전체 플랫폼</option>
             </select>
             <button onclick="searchPosts()">🔍 검색</button>
             <button onclick="triggerCrawl()">🔄 크롤링 실행</button>
+        </div>
+
+        <div class="calendar-panel" id="calendarPanel" style="display:none;">
+            <div class="calendar-header">
+                <div class="calendar-title" id="calendarTitle">-</div>
+                <div class="calendar-nav">
+                    <div class="calendar-range-toggle">
+                        <button id="monthRangeBtn" class="active" onclick="switchCalendarRange('month')">월간</button>
+                        <button id="weekRangeBtn" onclick="switchCalendarRange('week')">주간</button>
+                    </div>
+                    <button onclick="moveCalendar(-1)">← 이전</button>
+                    <button onclick="goToCurrentPeriod()">오늘</button>
+                    <button onclick="moveCalendar(1)">다음 →</button>
+                </div>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+            <div class="discover-panel" id="discoverPanel">
+                <div class="discover-card">
+                    <h4>🕰 몇 년 전 오늘</h4>
+                    <ul class="discover-list" id="todayHistoryList">
+                        <li>불러오는 중...</li>
+                    </ul>
+                </div>
+                <div class="discover-card">
+                    <h4>🎲 Random Pick 3</h4>
+                    <ul class="discover-list" id="randomList">
+                        <li>불러오는 중...</li>
+                    </ul>
+                </div>
+            </div>
         </div>
         
         <div class="posts-list" id="postsList">
@@ -267,6 +546,14 @@
     <script>
         let currentPage = 1;
         let platformChart = null;
+        let currentView = 'list';
+        let statsVisible = false;
+        let selectedDate = '';
+        const today = new Date();
+        let calendarYear = today.getFullYear();
+        let calendarMonth = today.getMonth() + 1;
+        let calendarRange = 'month';
+        let weekReferenceDate = formatYmd(today);
         
         // 통계 로드
         async function loadStats() {
@@ -345,7 +632,8 @@
                 page: page,
                 per_page: 20,
                 search: search,
-                platform: platform
+                platform: platform,
+                published_on: selectedDate
             });
             
             try {
@@ -361,6 +649,198 @@
                 document.getElementById('postsList').innerHTML = '<div class="no-results">데이터를 불러올 수 없습니다.</div>';
             }
         }
+
+        function switchView(mode) {
+            currentView = mode;
+            const isCalendar = mode === 'calendar';
+
+            document.getElementById('calendarPanel').style.display = isCalendar ? 'block' : 'none';
+            document.getElementById('postsList').style.display = isCalendar ? 'none' : 'block';
+            document.getElementById('pagination').style.display = isCalendar ? 'none' : 'flex';
+
+            document.getElementById('listModeBtn').classList.toggle('active', !isCalendar);
+            document.getElementById('calendarModeBtn').classList.toggle('active', isCalendar);
+
+            if (isCalendar) {
+                loadCalendar();
+                loadDiscover();
+            }
+        }
+
+        function toggleStatsPanel() {
+            statsVisible = !statsVisible;
+            document.getElementById('statsPanel').style.display = statsVisible ? 'block' : 'none';
+            document.getElementById('statsToggleBtn').textContent = statsVisible ? '📊 통계 닫기' : '📊 통계 보기';
+        }
+
+        function switchCalendarRange(range) {
+            calendarRange = range;
+            document.getElementById('monthRangeBtn').classList.toggle('active', range === 'month');
+            document.getElementById('weekRangeBtn').classList.toggle('active', range === 'week');
+            loadCalendar();
+        }
+
+        function moveCalendar(offset) {
+            if (calendarRange === 'month') {
+                calendarMonth += offset;
+                if (calendarMonth < 1) {
+                    calendarMonth = 12;
+                    calendarYear -= 1;
+                } else if (calendarMonth > 12) {
+                    calendarMonth = 1;
+                    calendarYear += 1;
+                }
+            } else {
+                const d = new Date(weekReferenceDate + 'T00:00:00');
+                d.setDate(d.getDate() + (offset * 7));
+                weekReferenceDate = formatYmd(d);
+            }
+            loadCalendar();
+        }
+
+        function goToCurrentPeriod() {
+            calendarYear = today.getFullYear();
+            calendarMonth = today.getMonth() + 1;
+            weekReferenceDate = formatYmd(today);
+            loadCalendar();
+        }
+
+        async function loadCalendar() {
+            const search = document.getElementById('searchInput').value;
+            const platform = document.getElementById('platformFilter').value;
+
+            try {
+                if (calendarRange === 'month') {
+                    const params = new URLSearchParams({
+                        year: calendarYear,
+                        month: calendarMonth,
+                        search: search,
+                        platform: platform
+                    });
+                    const resp = await fetch(`/api/calendar?${params}`);
+                    const data = await resp.json();
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    renderMonthCalendar(data.year, data.month, data.days || {});
+                } else {
+                    const params = new URLSearchParams({
+                        date: weekReferenceDate,
+                        search: search,
+                        platform: platform
+                    });
+                    const resp = await fetch(`/api/calendar/week?${params}`);
+                    const data = await resp.json();
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    weekReferenceDate = data.week_start;
+                    renderWeekCalendar(data.week_start, data.week_end, data.days || []);
+                }
+            } catch (e) {
+                console.error('캘린더 로드 실패:', e);
+                document.getElementById('calendarGrid').innerHTML = '<div class="no-results" style="grid-column: 1 / -1;">달력 데이터를 불러올 수 없습니다.</div>';
+            }
+        }
+
+        function renderMonthCalendar(year, month, daysMap) {
+            const title = document.getElementById('calendarTitle');
+            const grid = document.getElementById('calendarGrid');
+            title.textContent = `${year}년 ${month}월`;
+
+            const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+            let html = weekdays.map(d => `<div class="calendar-weekday">${d}</div>`).join('');
+
+            const firstDay = new Date(year, month - 1, 1).getDay();
+            const daysInMonth = new Date(year, month, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                html += '<div class="calendar-day empty"></div>';
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayStr = String(day).padStart(2, '0');
+                const monthStr = String(month).padStart(2, '0');
+                const dateKey = `${year}-${monthStr}-${dayStr}`;
+                const info = daysMap[dateKey] || { count: 0, titles: [] };
+                html += renderCalendarDayCell(String(day), dateKey, info);
+            }
+
+            grid.innerHTML = html;
+        }
+
+        function renderWeekCalendar(weekStart, weekEnd, days) {
+            const title = document.getElementById('calendarTitle');
+            const grid = document.getElementById('calendarGrid');
+            title.textContent = `${weekStart} ~ ${weekEnd}`;
+
+            const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+            let html = weekdays.map(d => `<div class="calendar-weekday">${d}</div>`).join('');
+
+            days.forEach((dayInfo) => {
+                const d = new Date(dayInfo.date + 'T00:00:00');
+                html += renderCalendarDayCell(`${d.getMonth() + 1}/${d.getDate()}`, dayInfo.date, dayInfo || { count: 0, titles: [] });
+            });
+
+            grid.innerHTML = html;
+        }
+
+        function renderCalendarDayCell(label, dateKey, info) {
+            const count = Number(info.count || 0);
+            const selectedClass = selectedDate === dateKey ? 'selected' : '';
+            const titles = Array.isArray(info.titles) ? info.titles.slice(0, 3) : [];
+            const titleHtml = titles.length > 0
+                ? `<ul class="calendar-day-titles">${titles.map(item => `<li class="calendar-day-title"><a href="${escapeHtml(item.url || '#')}" target="_blank">${escapeHtml(truncate(item.title || '', 22))}</a></li>`).join('')}</ul>`
+                : '';
+
+            return `
+                <button class="calendar-day ${selectedClass}" onclick="selectCalendarDate('${dateKey}')">
+                    <span class="calendar-day-number">${label}</span>
+                    ${count > 0 ? `<span class="calendar-day-count">${count}개</span>` : ''}
+                    ${titleHtml}
+                </button>
+            `;
+        }
+
+        function selectCalendarDate(dateKey) {
+            selectedDate = dateKey;
+            switchView('list');
+            loadPosts(1);
+        }
+
+        async function loadDiscover() {
+            const search = document.getElementById('searchInput').value;
+            const platform = document.getElementById('platformFilter').value;
+            const params = new URLSearchParams({ search, platform });
+
+            try {
+                const resp = await fetch(`/api/discover?${params}`);
+                const data = await resp.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                renderDiscoverList('todayHistoryList', data.today_history || []);
+                renderDiscoverList('randomList', data.random_posts || []);
+            } catch (e) {
+                console.error('추천 로드 실패:', e);
+                document.getElementById('todayHistoryList').innerHTML = '<li>불러오기 실패</li>';
+                document.getElementById('randomList').innerHTML = '<li>불러오기 실패</li>';
+            }
+        }
+
+        function renderDiscoverList(targetId, posts) {
+            const el = document.getElementById(targetId);
+            if (!posts || posts.length === 0) {
+                el.innerHTML = '<li>항목 없음</li>';
+                return;
+            }
+
+            el.innerHTML = posts.slice(0, 3).map(post => `
+                <li>
+                    <a href="${escapeHtml(post.url || '#')}" target="_blank">${escapeHtml(post.title || '(제목 없음)')}</a>
+                </li>
+            `).join('');
+        }
         
         // 포스트 렌더링
         function renderPosts(posts) {
@@ -373,19 +853,34 @@
             
             container.innerHTML = posts.map(post => `
                 <div class="post-item">
-                    <div class="post-header">
-                        <span class="platform-badge">${escapeHtml(post.platform)}</span>
-                        <span class="post-meta">${escapeHtml(post.media_name)}</span>
+                    <div class="post-layout">
+                        <div class="post-thumb">${renderPostThumbnail(post.representative_image, post.title)}</div>
+                        <div class="post-content">
+                            <div class="post-header">
+                                <span class="platform-badge">${escapeHtml(post.platform)}</span>
+                                <span class="post-meta">${escapeHtml(post.media_name)}</span>
+                            </div>
+                            <div class="post-title">
+                                <a href="${escapeHtml(post.url)}" target="_blank">${escapeHtml(post.title)}</a>
+                            </div>
+                            <div class="post-meta">
+                                📅 ${formatDate(post.published_date)} | 💾 ${formatDate(post.created_at)}
+                            </div>
+                            ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
+                        </div>
                     </div>
-                    <div class="post-title">
-                        <a href="${escapeHtml(post.url)}" target="_blank">${escapeHtml(post.title)}</a>
-                    </div>
-                    <div class="post-meta">
-                        📅 ${formatDate(post.published_date)} | 💾 ${formatDate(post.created_at)}
-                    </div>
-                    ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
                 </div>
             `).join('');
+        }
+
+        function renderPostThumbnail(imageUrl, title) {
+            if (!imageUrl) {
+                return 'No Image';
+            }
+
+            const safeUrl = escapeHtml(imageUrl);
+            const safeTitle = escapeHtml(title || 'thumbnail');
+            return `<img src="${safeUrl}" alt="${safeTitle}" onerror="this.remove(); this.parentElement.textContent='No Image';">`;
         }
         
         // 페이지네이션 렌더링
@@ -414,6 +909,11 @@
         
         // 검색
         function searchPosts() {
+            if (currentView === 'calendar') {
+                loadCalendar();
+                loadDiscover();
+                return;
+            }
             loadPosts(1);
         }
         
@@ -454,6 +954,13 @@
             if (!text) return '';
             return text.length > length ? text.substring(0, length) + '...' : text;
         }
+
+        function formatYmd(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
         
         // Enter 키 검색
         document.getElementById('searchInput').addEventListener('keypress', (e) => {
@@ -464,7 +971,7 @@
         
         // 초기 로드
         loadStats();
-        loadPosts();
+        switchView('calendar');
     </script>
 </body>
 </html>
