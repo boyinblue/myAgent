@@ -1114,20 +1114,21 @@ class ArchiveManager:
             comment_text = comments or ""
             
             self.cur.execute('''
-                INSERT INTO posts (url, title, platform, media_name, created_at, file_path, images, tags, comment, crawler_version, db_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO posts (url, title, platform, media_name, created_at, published_date, file_path, images, tags, comment, crawler_version, db_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(url) DO UPDATE SET
                     title=excluded.title,
                     platform=excluded.platform,
                     media_name=excluded.media_name,
                     created_at=excluded.created_at,
+                    published_date=excluded.published_date,
                     file_path=excluded.file_path,
                     images=excluded.images,
                     tags=excluded.tags,
                     comment=excluded.comment,
                     crawler_version=excluded.crawler_version,
                     db_updated_at=CURRENT_TIMESTAMP
-            ''', (url, title, platform_type, media_name, created_at, filepath, images_json, tags_json, comment_text, crawler_version))
+            ''', (url, title, platform_type, media_name, created_at, created_at, filepath, images_json, tags_json, comment_text, crawler_version))
             self.conn.commit()
             # 저장된 ID 가져오기
             result = self.cur.execute('SELECT id FROM posts WHERE url = ?', (url,)).fetchone()
@@ -1180,13 +1181,14 @@ class ArchiveManager:
         try:
             self.cur.execute(
                 '''
-                    INSERT INTO posts (url, title, platform, media_name, created_at, file_path, images, tags, comment, crawler_version, db_updated_at)
-                    VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO posts (url, title, platform, media_name, created_at, published_date, file_path, images, tags, comment, crawler_version, db_updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(url) DO UPDATE SET
                         title=excluded.title,
                         platform=excluded.platform,
                         media_name=excluded.media_name,
                         created_at=excluded.created_at,
+                        published_date=excluded.published_date,
                         file_path=NULL,
                         images=excluded.images,
                         tags=excluded.tags,
@@ -1199,6 +1201,7 @@ class ArchiveManager:
                     title,
                     platform_type,
                     media_name,
+                    created_at or "",
                     created_at or "",
                     images_json,
                     tags_json,
