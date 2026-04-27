@@ -316,6 +316,21 @@ def _has_search_intent(text: str) -> bool:
     return any(k in lower for k in keywords)
 
 
+def _parse_help_intent(text: str) -> tuple[bool, str]:
+    """일반 문장 도움말 요청을 감지하고, 세부 명령어 질의어를 반환합니다."""
+    normalized = (text or "").strip()
+    if not normalized:
+        return False, ""
+
+    match = re.match(r"^(?:도움말|헬프|help)(?:\s+(.+))?$", normalized, flags=re.IGNORECASE)
+    if not match:
+        return False, ""
+
+    query = (match.group(1) or "").strip()
+    query = query.lstrip("/").strip()
+    return True, query
+
+
 def _has_issue_intent(text: str) -> bool:
     lower = (text or "").lower()
     return any(k in lower for k in ["이슈", "issue", "버그", "문제 등록", "깃허브 이슈"])
@@ -1235,6 +1250,15 @@ def autopilot(user_prompt: str):
     if detected_url and _has_archive_intent(user_prompt):
         result = trigger_content_crawler_workflow(detected_url)
         print(result)
+        return
+
+    # 일반 문장 도움말("도움말", "help", "도움말 post") 처리
+    has_help_intent, help_query = _parse_help_intent(user_prompt)
+    if has_help_intent:
+        if help_query:
+            print(_get_command_help(help_query))
+        else:
+            print(_get_slash_commands_help())
         return
     
     # 검색 의도 감지 시 즉시 검색 실행

@@ -745,6 +745,34 @@ def validate_runtime_config() -> bool:
 
     return True
 
+
+def _split_output_and_image_urls(text: str) -> Tuple[str, list[str]]:
+    """출력 텍스트에서 이미지 URL 라인을 분리합니다.
+
+    포맷 예: "   🖼️ https://..."
+    """
+    lines = (text or "").splitlines()
+    cleaned_lines: list[str] = []
+    image_urls: list[str] = []
+
+    for line in lines:
+        match = re.match(r"^\s*🖼️\s+(.+?)\s*$", line)
+        if not match:
+            cleaned_lines.append(line)
+            continue
+
+        candidate = match.group(1).strip()
+        parsed = urlparse(candidate)
+        if parsed.scheme in {"http", "https"} and parsed.netloc and candidate not in image_urls:
+            image_urls.append(candidate)
+            continue
+
+        # URL 형식이 아니면 원문 보존
+        cleaned_lines.append(line)
+
+    cleaned_text = "\n".join(cleaned_lines).strip()
+    return cleaned_text, image_urls
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
@@ -881,8 +909,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 3. 결과 메시지 송신
         if output:
-            reply_markup = _build_commands_keyboard() if "📌 주요 슬래시 명령어" in output else None
-            await context.bot.send_message(chat_id=chat_id, text=f"{output[:4000]}", reply_markup=reply_markup)
+            cleaned_output, image_urls = _split_output_and_image_urls(output)
+            reply_markup = _build_commands_keyboard() if "📌 주요 슬래시 명령어" in cleaned_output else None
+
+            if cleaned_output:
+                await context.bot.send_message(chat_id=chat_id, text=f"{cleaned_output[:4000]}", reply_markup=reply_markup)
+
+            # 검색 결과에 포함된 이미지 URL은 실제 이미지로 전송
+            for image_url in image_urls[:5]:
+                try:
+                    await context.bot.send_photo(chat_id=chat_id, photo=image_url)
+                except Exception as photo_exc:
+                    logging.warning(f"이미지 전송 실패({image_url}): {photo_exc}")
+                    await context.bot.send_message(chat_id=chat_id, text=f"🖼️ 이미지 링크: {image_url}")
+
             _append_chatbot_log(
                 event="response_sent",
                 chat_id=chat_id,
