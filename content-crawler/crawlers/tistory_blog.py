@@ -5,6 +5,7 @@
 from os import link
 from bs4 import BeautifulSoup
 import feedparser
+import re
 import requests
 from typing import Dict, List, Optional
 import time
@@ -141,6 +142,9 @@ class TistoryBlogCrawler:
             ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
             for loc in root.findall(".//sm:loc", ns):
                 href = loc.text.strip()
+                # 카테고리/태그 페이지 제외
+                if '/category/' in href or re.search(r'tistory\.com/tag/', href, re.IGNORECASE):
+                    continue
                 if self.archive_mgr:
                     if self.crawler_version and self.archive_mgr.should_skip_crawl(href, self.crawler_version):
                         continue

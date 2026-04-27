@@ -59,6 +59,22 @@ def load_config(config_file="config.json"):
         return json.load(f)
 
 
+def _is_non_post_url(url: str) -> bool:
+    """카테고리/태그 페이지 등 실제 게시물이 아닌 URL인지 판별합니다."""
+    import re
+    if not url:
+        return False
+    # Tistory 카테고리/태그 페이지
+    if '/category/' in url:
+        return True
+    if re.search(r'tistory\.com/tag/', url, re.IGNORECASE):
+        return True
+    # Naver 블로그 — 숫자 포스트 ID가 없는 URL (리스트/카테고리 페이지)
+    if 'blog.naver.com' in url and not re.search(r'/\d{6,}', url):
+        return True
+    return False
+
+
 def save_metadata(posts, output_file):
     """포스트 메타데이터를 JSON으로 저장합니다."""
     data = {
@@ -191,6 +207,11 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
 
             if link.startswith("https://blog.naver.com") and "?" in link:
                 link = link.split("?")[0]
+
+            # 비-게시물 URL 필터: 카테고리/태그 페이지 제외
+            if _is_non_post_url(link):
+                print(f"[i] 비-게시물 URL 건너뜁니다: {link}")
+                continue
 
             # 중복 확인
             if archive_mgr.is_archived(link):
