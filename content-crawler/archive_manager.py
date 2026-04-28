@@ -1363,9 +1363,10 @@ class ArchiveManager:
         """
         try:
             import subprocess
-            # 최소한 문자열을 전달해 모델을 호출
+            # stdin으로 프롬프트 전달 (ollama run은 --prompt 플래그를 지원하지 않음)
             proc = subprocess.run(
-                ["ollama", "run", "llama2", "--prompt", text],
+                ["ollama", "run", "llama2"],
+                input=text,
                 capture_output=True,
                 text=True,
                 timeout=30,

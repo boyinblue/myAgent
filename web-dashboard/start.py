@@ -25,4 +25,10 @@ if __name__ == '__main__':
     os.environ['DASHBOARD_LOCAL_MODE'] = '1'
 
     import app as dashboard_app
+    try:
+        auto_result = dashboard_app.auto_trigger_crawl_if_due()
+        print(f"[*] startup auto-crawl check: {auto_result}")
+    except Exception as exc:
+        print(f"[!] startup auto-crawl check failed: {exc}")
+
     dashboard_app.app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=True)

@@ -279,6 +279,107 @@
             gap: 10px;
             padding: 30px;
         }
+
+        .crawl-progress-panel {
+            width: 100%;
+            display: none;
+            margin-top: 10px;
+            border: 1px solid #dbe4ff;
+            border-radius: 10px;
+            background: #f7f9ff;
+            padding: 12px;
+        }
+
+        .crawl-progress-panel.active {
+            display: block;
+        }
+
+        .crawl-progress-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #3a4bb8;
+            margin-bottom: 8px;
+        }
+
+        .crawl-progress-log {
+            max-height: 180px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #e7ebff;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #333;
+            white-space: pre-wrap;
+        }
+
+        .chatbot-panel {
+            margin: 0 30px 24px;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .chatbot-header {
+            background: linear-gradient(135deg, #1f2937 0%, #334155 100%);
+            color: #fff;
+            padding: 12px 14px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .chatbot-messages {
+            min-height: 140px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 12px;
+            background: #f8fafc;
+            border-top: 1px solid #e9ecef;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .chat-bubble {
+            margin-bottom: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .chat-bubble.user {
+            background: #e8f0fe;
+            color: #1f3a8a;
+            margin-left: 22%;
+        }
+
+        .chat-bubble.bot {
+            background: #ffffff;
+            color: #1f2937;
+            margin-right: 12%;
+            border: 1px solid #e5e7eb;
+        }
+
+        .chatbot-input-row {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+        }
+
+        .chatbot-input-row input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .chatbot-input-row button {
+            padding: 10px 14px;
+            border-radius: 8px;
+        }
         
         .pagination button {
             padding: 8px 16px;
@@ -594,6 +695,10 @@
             </select>
             <button onclick="searchPosts()">🔍 검색</button>
             <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
+            <div id="crawlProgressPanel" class="crawl-progress-panel">
+                <div class="crawl-progress-title" id="crawlProgressTitle">크롤링 진행 상황</div>
+                <div class="crawl-progress-log" id="crawlProgressLog">아직 실행 이력이 없습니다.</div>
+            </div>
         </div>
 
         <!-- 크롤링 모달 -->
@@ -643,6 +748,17 @@
         <div class="posts-list" id="postsList">
             <div class="loading">데이터를 불러오는 중...</div>
         </div>
+
+        <div class="chatbot-panel">
+            <div class="chatbot-header">AI 챗봇</div>
+            <div class="chatbot-messages" id="chatbotMessages">
+                <div class="chat-bubble bot">안녕하세요. 아카이브 관련 질문을 입력해 주세요.</div>
+            </div>
+            <div class="chatbot-input-row">
+                <input type="text" id="chatbotInput" placeholder="예: 도움말, /search 와인, 대시보드 상태 알려줘">
+                <button id="chatbotSendBtn" onclick="sendChatMessage()">전송</button>
+            </div>
+        </div>
         
         <div class="pagination" id="pagination"></div>
     </div>
@@ -660,6 +776,7 @@
         let calendarRange = 'month';
         let weekReferenceDate = formatYmd(today);
         let crawlStatusTimer = null;
+        let crawlProgressTimer = null;
         
         // 통계 로드
         async function loadStats() {
@@ -796,6 +913,7 @@
                 } else {
                     link.style.display = 'none';
                 }
+                ensureCrawlProgressPolling(true);
                 return;
             }
 
@@ -803,6 +921,77 @@
             text.textContent = '';
             link.style.display = 'none';
             actionBtn.disabled = false;
+            ensureCrawlProgressPolling(false);
+        }
+
+        function ensureCrawlProgressPolling(shouldRun) {
+            if (shouldRun) {
+                if (!crawlProgressTimer) {
+                    crawlProgressTimer = setInterval(loadCrawlProgress, 5000);
+                }
+                loadCrawlProgress();
+                return;
+            }
+            if (crawlProgressTimer) {
+                clearInterval(crawlProgressTimer);
+                crawlProgressTimer = null;
+            }
+        }
+
+        function renderCrawlProgress(data) {
+            const panel = document.getElementById('crawlProgressPanel');
+            const title = document.getElementById('crawlProgressTitle');
+            const log = document.getElementById('crawlProgressLog');
+
+            if (!data || data.error) {
+                panel.classList.add('active');
+                title.textContent = '크롤링 진행 상황';
+                log.textContent = data && data.error ? `조회 실패: ${data.error}` : '진행 정보를 가져올 수 없습니다.';
+                return;
+            }
+
+            const runStatus = data.status || 'unknown';
+            const runConclusion = data.conclusion || '-';
+            const running = Boolean(data.running);
+            panel.classList.add('active');
+            title.textContent = running ? '크롤링 진행 상황 (실시간)' : '최근 크롤링 실행 결과';
+
+            const lines = [];
+            lines.push(`워크플로 상태: ${runStatus} / 결론: ${runConclusion}`);
+            if (data.created_at) lines.push(`시작: ${data.created_at}`);
+            if (data.updated_at) lines.push(`업데이트: ${data.updated_at}`);
+
+            const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+            if (jobs.length > 0) {
+                lines.push('');
+                lines.push('[Jobs]');
+                jobs.forEach((job) => {
+                    lines.push(`- ${job.name} (${job.status || '-'} / ${job.conclusion || '-'})`);
+                    const steps = Array.isArray(job.steps) ? job.steps : [];
+                    steps.forEach((step) => {
+                        lines.push(`  · ${step.number}. ${step.name} (${step.status || '-'} / ${step.conclusion || '-'})`);
+                    });
+                });
+            } else {
+                lines.push('');
+                lines.push('job 정보가 아직 없습니다.');
+            }
+
+            log.textContent = lines.join('\n');
+            log.scrollTop = 0;
+        }
+
+        async function loadCrawlProgress() {
+            try {
+                const resp = await fetch('/api/crawl-progress');
+                const data = await resp.json();
+                renderCrawlProgress(data);
+                if (!data.running) {
+                    ensureCrawlProgressPolling(false);
+                }
+            } catch (e) {
+                renderCrawlProgress({ error: e.message });
+            }
         }
 
         async function loadCrawlStatus() {
@@ -1093,14 +1282,59 @@
                 const data = await resp.json();
 
                 if (data.success) {
-                    alert('✅ ' + data.message);
+                    const panel = document.getElementById('crawlProgressPanel');
+                    const title = document.getElementById('crawlProgressTitle');
+                    const log = document.getElementById('crawlProgressLog');
+                    panel.classList.add('active');
+                    title.textContent = '크롤링 진행 상황 (실시간)';
+                    log.textContent = `✅ ${data.message}\n실시간 상태를 불러오는 중...`;
                     renderCrawlStatus({ running: true });
                     loadCrawlStatus();
+                    ensureCrawlProgressPolling(true);
                 } else {
                     alert('❌ ' + (data.error || '실패'));
                 }
             } catch (e) {
                 alert('❌ 요청 실패: ' + e.message);
+            }
+        }
+
+        function appendChatMessage(role, text) {
+            const container = document.getElementById('chatbotMessages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${role}`;
+            bubble.textContent = text;
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatbotInput');
+            const button = document.getElementById('chatbotSendBtn');
+            const message = (input.value || '').trim();
+            if (!message) return;
+
+            appendChatMessage('user', message);
+            input.value = '';
+            button.disabled = true;
+
+            try {
+                const resp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    appendChatMessage('bot', data.reply || '✅ 완료 (출력 없음)');
+                } else {
+                    appendChatMessage('bot', `❌ ${data.error || '실패'}`);
+                }
+            } catch (e) {
+                appendChatMessage('bot', `❌ 요청 실패: ${e.message}`);
+            } finally {
+                button.disabled = false;
+                input.focus();
             }
         }
         
@@ -1135,12 +1369,19 @@
                 searchPosts();
             }
         });
+
+        document.getElementById('chatbotInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
         
         // 초기 로드
         loadStats();
         switchView('list');
         loadPosts(1);
         loadCrawlStatus();
+        loadCrawlProgress();
         crawlStatusTimer = setInterval(loadCrawlStatus, 15000);
     </script>
 </body>

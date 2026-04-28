@@ -4,9 +4,11 @@
 import os
 import sys
 import sqlite3
+import io
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from pathlib import Path
+from contextlib import redirect_stdout
 
 # 프로젝트 루트를 sys.path에 추가
 project_root = Path(__file__).parent.parent
@@ -16,6 +18,10 @@ sys.path.insert(0, str(project_root))
 content_crawler = project_root / 'content-crawler'
 if str(content_crawler) not in sys.path:
     sys.path.insert(0, str(content_crawler))
+
+chatbot_dir = project_root / 'chatbot'
+if str(chatbot_dir) not in sys.path:
+    sys.path.insert(0, str(chatbot_dir))
 
 from utils.secrets import load_environment
 load_environment()
@@ -29,6 +35,155 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
 
 # 토큰 저장 파일
 _TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
+
+
+def _get_github_dispatch_settings() -> tuple[str, str, str, str]:
+    """GitHub dispatch 설정을 환경변수/기본값에서 읽습니다."""
+    github_token = os.getenv('GITHUB_TOKEN', '').strip()
+    repo = os.getenv('GITHUB_REPOSITORY', 'boyinblue/myAgent').strip()
+    workflow = os.getenv('GITHUB_WORKFLOW_FILE', 'run_crowler.yml').strip()
+    ref = os.getenv('GITHUB_REF_NAME', 'main').strip()
+    return github_token, repo, workflow, ref
+
+
+def _github_headers(token: str) -> dict:
+    return {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json',
+    }
+
+
+def _dispatch_crawl_workflow(target_url: str = '') -> tuple[bool, str]:
+    """GitHub Actions 크롤러 워크플로를 실행합니다."""
+    import requests
+
+    github_token, repo, workflow, ref = _get_github_dispatch_settings()
+    if not github_token:
+        return False, 'GitHub token not configured'
+
+    api_url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches'
+    body = {
+        'ref': ref,
+        'inputs': {'url': target_url.strip()},
+    }
+
+    try:
+        resp = requests.post(api_url, headers=_github_headers(github_token), json=body, timeout=20)
+        resp.raise_for_status()
+        return True, ''
+    except Exception as exc:
+        detail = ''
+        response_obj = getattr(exc, 'response', None)
+        if response_obj is not None:
+            detail = response_obj.text
+        return False, f'{exc}\n{detail}'.strip()
+
+
+def _latest_workflow_run() -> dict | None:
+    """최근 워크플로 실행 1건을 조회합니다."""
+    import requests
+
+    github_token, repo, workflow, _ = _get_github_dispatch_settings()
+    if not github_token:
+        return None
+
+    api_url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=1'
+    resp = requests.get(api_url, headers=_github_headers(github_token), timeout=20)
+    resp.raise_for_status()
+    runs = resp.json().get('workflow_runs', [])
+    return runs[0] if runs else None
+
+
+def _workflow_jobs(run_id: int) -> list:
+    """특정 워크플로 실행의 job/step 상태를 조회합니다."""
+    import requests
+
+    github_token, repo, _, _ = _get_github_dispatch_settings()
+    if not github_token:
+        return []
+
+    api_url = f'https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=20'
+    resp = requests.get(api_url, headers=_github_headers(github_token), timeout=20)
+    resp.raise_for_status()
+    return resp.json().get('jobs', [])
+
+
+def _parse_iso_datetime(iso_str: str) -> datetime | None:
+    value = (iso_str or '').strip()
+    if not value:
+        return None
+    value = value.replace('Z', '+00:00')
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _load_startup_crawl_policy() -> tuple[bool, int]:
+    """시작 시 자동 크롤링 정책을 config/env에서 로드합니다."""
+    enabled = os.getenv('CRAWL_AUTO_TRIGGER_ON_STARTUP', '1').strip() not in {'0', 'false', 'False'}
+    interval_hours = int(os.getenv('CRAWL_INTERVAL_HOURS', '24').strip() or '24')
+
+    config_path = project_root / 'config.json'
+    try:
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+            crawler_cfg = cfg.get('crawler', {})
+            if isinstance(crawler_cfg, dict):
+                if 'auto_trigger_on_startup' in crawler_cfg:
+                    enabled = bool(crawler_cfg.get('auto_trigger_on_startup'))
+                if 'startup_interval_hours' in crawler_cfg:
+                    interval_hours = int(crawler_cfg.get('startup_interval_hours') or interval_hours)
+    except Exception as exc:
+        print(f"[!] 자동 크롤링 정책 로드 실패: {exc}")
+
+    if interval_hours < 1:
+        interval_hours = 1
+    return enabled, interval_hours
+
+
+def auto_trigger_crawl_if_due() -> dict:
+    """서비스 시작 시 마지막 완료 시각을 확인해 주기 초과면 크롤링을 실행합니다."""
+    enabled, interval_hours = _load_startup_crawl_policy()
+    if not enabled:
+        return {'triggered': False, 'reason': 'disabled'}
+
+    try:
+        latest_run = _latest_workflow_run()
+        if not latest_run:
+            ok, err = _dispatch_crawl_workflow('')
+            return {'triggered': ok, 'reason': 'no_history', 'error': err}
+
+        updated_at = _parse_iso_datetime(latest_run.get('updated_at', ''))
+        if updated_at is None:
+            ok, err = _dispatch_crawl_workflow('')
+            return {'triggered': ok, 'reason': 'invalid_last_timestamp', 'error': err}
+
+        elapsed = datetime.now(updated_at.tzinfo) - updated_at
+        elapsed_hours = elapsed.total_seconds() / 3600.0
+
+        if latest_run.get('status') in {'queued', 'in_progress', 'pending', 'waiting', 'requested'}:
+            return {'triggered': False, 'reason': 'already_running'}
+
+        if elapsed_hours >= interval_hours:
+            ok, err = _dispatch_crawl_workflow('')
+            return {
+                'triggered': ok,
+                'reason': 'interval_exceeded',
+                'elapsed_hours': round(elapsed_hours, 2),
+                'threshold_hours': interval_hours,
+                'error': err,
+            }
+
+        return {
+            'triggered': False,
+            'reason': 'interval_not_exceeded',
+            'elapsed_hours': round(elapsed_hours, 2),
+            'threshold_hours': interval_hours,
+        }
+    except Exception as exc:
+        return {'triggered': False, 'reason': 'error', 'error': str(exc)}
 
 def is_local_mode() -> bool:
     return (os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() == '1')
@@ -510,12 +665,7 @@ def api_trigger_crawl():
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
     
-    import requests
-    
-    github_token = os.getenv('GITHUB_TOKEN')
-    repo = os.getenv('GITHUB_REPOSITORY', 'boyinblue/myAgent')
-    workflow = 'run_crowler.yml'
-    
+    github_token, _, _, _ = _get_github_dispatch_settings()
     if not github_token:
         return jsonify({'error': 'GitHub token not configured'}), 500
     
@@ -523,23 +673,14 @@ def api_trigger_crawl():
     body = request.get_json(silent=True) or {}
     target_url = body.get('url', '').strip()
     
-    api_url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches'
-    headers = {
-        'Authorization': f'token {github_token}',
-        'Accept': 'application/vnd.github.v3+json'
-    }
-    data = {
-        'ref': 'main',
-        'inputs': {'url': target_url},  # 빈 문자열이면 전체 크롤링
-    }
-    
     try:
-        resp = requests.post(api_url, headers=headers, json=data)
-        resp.raise_for_status()
+        ok, err = _dispatch_crawl_workflow(target_url)
+        if not ok:
+            return jsonify({'error': err}), 500
         msg = f'단건 URL 크롤링이 시작되었습니다: {target_url}' if target_url else '전체 크롤링이 시작되었습니다.'
         return jsonify({'success': True, 'message': msg})
     except Exception as e:
-        return jsonify({'error': str(e), 'detail': getattr(e, 'response', None) and e.response.text}), 500
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/crawl-status')
@@ -548,30 +689,16 @@ def api_crawl_status():
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
 
-    import requests
-
-    github_token = os.getenv('GITHUB_TOKEN')
-    repo = os.getenv('GITHUB_REPOSITORY', 'boyinblue/myAgent')
-    workflow = 'run_crowler.yml'
+    github_token, _, workflow, _ = _get_github_dispatch_settings()
 
     if not github_token:
         return jsonify({'configured': False, 'running': False, 'message': 'GitHub token not configured'})
 
-    api_url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=1'
-    headers = {
-        'Authorization': f'token {github_token}',
-        'Accept': 'application/vnd.github.v3+json'
-    }
-
     try:
-        resp = requests.get(api_url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        runs = resp.json().get('workflow_runs', [])
-
-        if not runs:
+        run = _latest_workflow_run()
+        if not run:
             return jsonify({'configured': True, 'running': False, 'message': '실행 이력이 없습니다.'})
 
-        run = runs[0]
         status = run.get('status', '')
         conclusion = run.get('conclusion')
         running = status in ('queued', 'in_progress', 'waiting', 'pending', 'requested')
@@ -589,6 +716,84 @@ def api_crawl_status():
         })
     except Exception as e:
         return jsonify({'configured': True, 'running': False, 'error': str(e)}), 500
+
+
+@app.route('/api/crawl-progress')
+def api_crawl_progress():
+    """최근 크롤링 실행의 job/step 진행 상태를 반환합니다."""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    try:
+        run = _latest_workflow_run()
+        if not run:
+            return jsonify({'running': False, 'jobs': [], 'message': '실행 이력이 없습니다.'})
+
+        run_id = int(run.get('id'))
+        status = run.get('status', '')
+        running = status in ('queued', 'in_progress', 'waiting', 'pending', 'requested')
+        jobs = _workflow_jobs(run_id)
+
+        normalized_jobs = []
+        for job in jobs:
+            normalized_steps = []
+            for step in job.get('steps', []) or []:
+                normalized_steps.append(
+                    {
+                        'name': step.get('name', ''),
+                        'status': step.get('status', ''),
+                        'conclusion': step.get('conclusion', ''),
+                        'number': step.get('number', 0),
+                    }
+                )
+
+            normalized_jobs.append(
+                {
+                    'name': job.get('name', ''),
+                    'status': job.get('status', ''),
+                    'conclusion': job.get('conclusion', ''),
+                    'started_at': job.get('started_at', ''),
+                    'completed_at': job.get('completed_at', ''),
+                    'steps': normalized_steps,
+                }
+            )
+
+        return jsonify(
+            {
+                'running': running,
+                'status': status,
+                'conclusion': run.get('conclusion', ''),
+                'html_url': run.get('html_url', ''),
+                'created_at': run.get('created_at', ''),
+                'updated_at': run.get('updated_at', ''),
+                'jobs': normalized_jobs,
+            }
+        )
+    except Exception as exc:
+        return jsonify({'running': False, 'error': str(exc), 'jobs': []}), 500
+
+
+@app.route('/api/chat', methods=['POST'])
+def api_chat():
+    """웹 대시보드에서 챗봇 질의를 처리합니다."""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    message = (payload.get('message') or '').strip()
+    if not message:
+        return jsonify({'error': 'message is required'}), 400
+
+    try:
+        import autopilot
+
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            autopilot.autopilot(message)
+        reply = captured.getvalue().strip() or '✅ 처리 완료 (출력 없음)'
+        return jsonify({'success': True, 'reply': reply})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
 
 if __name__ == '__main__':
     # 개발 환경에서는 직접 실행
