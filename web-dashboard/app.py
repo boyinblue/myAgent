@@ -501,6 +501,8 @@ def api_posts():
         where_clauses, params = _build_search_platform_where(search, platform)
         # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
         where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
+        # 숨겨진 포스트 제외
+        where_clauses.append("(is_hidden IS NULL OR is_hidden = 0)")
 
         if published_on:
             where_clauses.append(f"{DATE_EXPR} = date(?)")
@@ -687,10 +689,11 @@ def api_discover():
             "strftime('%m-%d', " + DATE_EXPR + ") = ?",
             "strftime('%Y', " + DATE_EXPR + ") < ?",
             "title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')",
+            "(is_hidden IS NULL OR is_hidden = 0)",
         ] + where_clauses
         history_params = [md, current_year] + base_params
 
-        random_where = ["title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')"]
+        random_where = ["title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')", "(is_hidden IS NULL OR is_hidden = 0)"]
         if where_clauses:
             random_where.extend(where_clauses)
         else:
@@ -848,6 +851,45 @@ def api_crawl_progress():
         )
     except Exception as exc:
         return jsonify({'running': False, 'error': str(exc), 'jobs': []}), 500
+
+
+@app.route('/api/toggle-hide', methods=['POST'])
+def api_toggle_hide():
+    """포스트 숨김/표시 토글"""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    post_id = payload.get('id')
+    if not post_id:
+        return jsonify({'error': 'id is required'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not found'}), 500
+
+    try:
+        # 현재 is_hidden 상태 조회
+        row = conn.execute('SELECT is_hidden FROM posts WHERE id = ?', (post_id,)).fetchone()
+        if not row:
+            return jsonify({'error': 'Post not found'}), 404
+
+        current_hidden = row['is_hidden'] if row['is_hidden'] is not None else 0
+        new_hidden = 1 - current_hidden  # Toggle: 0 → 1, 1 → 0
+
+        conn.execute('UPDATE posts SET is_hidden = ? WHERE id = ?', (new_hidden, post_id))
+        conn.commit()
+
+        return jsonify({
+            'success': True,
+            'id': post_id,
+            'is_hidden': new_hidden,
+            'status': '숨김' if new_hidden else '표시'
+        })
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+    finally:
+        conn.close()
 
 
 @app.route('/api/chat', methods=['POST'])

@@ -273,6 +273,35 @@
             line-height: 1.6;
         }
         
+        .post-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .post-hide-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #856404;
+            transition: all 0.2s;
+        }
+        
+        .post-hide-btn:hover {
+            background: #ffc107;
+            color: white;
+        }
+        
+        .post-hide-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
         .pagination {
             display: flex;
             justify-content: center;
@@ -1208,7 +1237,7 @@
             }
             
             container.innerHTML = posts.map(post => `
-                <div class="post-item">
+                <div class="post-item" id="post-${post.id}">
                     <div class="post-layout">
                         <div class="post-thumb">${renderPostThumbnail(post.representative_image, post.title)}</div>
                         <div class="post-content">
@@ -1223,6 +1252,9 @@
                                 📅 ${formatDate(post.published_date)} | 💾 ${formatDate(post.created_at)}
                             </div>
                             ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
+                            <div class="post-actions">
+                                <button class="post-hide-btn" onclick="togglePostHide(${post.id}, this)" title="포스트 숨기기/표시하기">🚫 숨김</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1359,6 +1391,36 @@
             } finally {
                 button.disabled = false;
                 input.focus();
+            }
+        }
+        
+        // 포스트 숨김 토글
+        async function togglePostHide(postId, buttonEl) {
+            try {
+                const resp = await fetch('/api/toggle-hide', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: postId })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    // 포스트 아이템을 부드럽게 사라지게 함
+                    const postItem = document.getElementById(`post-${postId}`);
+                    if (postItem) {
+                        postItem.style.opacity = '0.5';
+                        postItem.style.textDecoration = 'line-through';
+                        buttonEl.textContent = data.is_hidden ? '✓ 숨김됨' : '🚫 숨김';
+                        buttonEl.disabled = true;
+                        setTimeout(() => {
+                            postItem.style.transition = 'opacity 0.3s';
+                            postItem.style.opacity = '0.3';
+                        }, 300);
+                    }
+                } else {
+                    alert(`오류: ${data.error || '실패'}`);
+                }
+            } catch (e) {
+                alert(`요청 실패: ${e.message}`);
             }
         }
         

@@ -85,6 +85,7 @@ class ArchiveManager:
                 crawler_version TEXT,
                 is_parsed BOOLEAN DEFAULT 0,    -- 파싱 완료 여부
                 archived BOOLEAN DEFAULT 0,     -- 최종 보관 완료 여부
+                is_hidden BOOLEAN DEFAULT 0,    -- 숨김 처리 여부
 
                 created_at TEXT,                -- ISO8601 형식 저장 권장
                 event_dates TEXT,               -- JSON 문자열로 저장
@@ -102,6 +103,16 @@ class ArchiveManager:
                 UPDATE posts SET db_updated_at = CURRENT_TIMESTAMP WHERE id = old.id;
             END
         ''')
+        
+        # 마이그레이션: 기존 DB에 is_hidden 컬럼이 없으면 추가
+        cols = self.cur.execute("PRAGMA table_info(posts)").fetchall()
+        col_names = {c[1] for c in cols}
+        if 'is_hidden' not in col_names:
+            try:
+                self.cur.execute("ALTER TABLE posts ADD COLUMN is_hidden BOOLEAN DEFAULT 0")
+            except Exception:
+                pass  # 이미 존재하거나 추가 불가한 경우 무시
+        
         self.conn.commit()
 
     def _create_local_images_table(self):
