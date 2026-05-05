@@ -357,15 +357,37 @@ def _extract_first_image(value: str) -> str:
     return value.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
 
 
+def _normalize_relative_date(value: str) -> str:
+    """'N시간 전', 'N분 전', 'N일 전' 형태의 상대 시간을 ISO datetime으로 변환"""
+    if not value:
+        return value
+    from datetime import datetime, timezone, timedelta
+    import re
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    m = re.match(r'(\d+)\s*시간\s*전', value)
+    if m:
+        return (now - timedelta(hours=int(m.group(1)))).isoformat()
+    m = re.match(r'(\d+)\s*분\s*전', value)
+    if m:
+        return (now - timedelta(minutes=int(m.group(1)))).isoformat()
+    m = re.match(r'(\d+)\s*일\s*전', value)
+    if m:
+        return (now - timedelta(days=int(m.group(1)))).isoformat()
+    return value
+
+
 def _to_post_preview(row):
+    pub = row.get('published_date') or ''
+    created = row.get('created_at') or ''
     return {
         'id': row.get('id'),
         'title': row.get('title') or '(제목 없음)',
         'url': row.get('url') or '',
         'platform': row.get('platform') or '',
         'media_name': row.get('media_name') or '',
-        'published_date': row.get('published_date') or '',
-        'created_at': row.get('created_at') or '',
+        'published_date': _normalize_relative_date(pub),
+        'created_at': _normalize_relative_date(created),
         'representative_image': _extract_first_image(row.get('representative_image') or ''),
     }
 
