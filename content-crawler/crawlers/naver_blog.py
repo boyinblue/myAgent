@@ -247,6 +247,19 @@ class NaverBlogCrawler:
                 except ValueError:
                     continue
 
+            # 상대 시간 처리: "N분 전", "N시간 전", "N일 전"
+            import re as _re
+            now = datetime.now(timezone(timedelta(hours=9)))
+            m = _re.match(r'(\d+)\s*분\s*전', value)
+            if m:
+                return (now - timedelta(minutes=int(m.group(1)))).isoformat()
+            m = _re.match(r'(\d+)\s*시간\s*전', value)
+            if m:
+                return (now - timedelta(hours=int(m.group(1)))).isoformat()
+            m = _re.match(r'(\d+)\s*일\s*전', value)
+            if m:
+                return (now - timedelta(days=int(m.group(1)))).isoformat()
+
             return value
 
         try:

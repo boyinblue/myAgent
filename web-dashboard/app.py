@@ -480,7 +480,7 @@ def api_posts():
             'total': total,
             'page': page,
             'per_page': per_page,
-            'posts': [dict(row) for row in posts]
+            'posts': [_to_post_preview(dict(row)) for row in posts]
         })
     finally:
         conn.close()
