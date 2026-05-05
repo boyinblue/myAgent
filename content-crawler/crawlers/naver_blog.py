@@ -316,6 +316,12 @@ class NaverBlogCrawler:
             if og_description and og_description.get("content"):
                 summary = og_description.get("content").strip()
 
+            # 대표 이미지: og:image 우선, 없으면 본문 첫 번째 img
+            images = []
+            og_image = soup.find("meta", attrs={"property": "og:image"})
+            if og_image and og_image.get("content"):
+                images = [{"url": og_image.get("content").strip()}]
+
             content_html = ""
             content_text = ""
             content_container = soup.select_one("div.se-main-container")
@@ -372,6 +378,7 @@ class NaverBlogCrawler:
                 "summary": summary,
                 "content": content_text,
                 "html": content_html,
+                "images": images,
                 "tags": ["__private__", "private"],
                 "comments": "[system] 네이버 모바일 응답에서 본문/작성일 누락으로 비공개 글로 분류됨",
                 "platform": "NaverBlog",
