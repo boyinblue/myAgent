@@ -337,6 +337,19 @@ def _build_calendar_day_map(rows):
     return days
 
 
+def _fix_naver_image_url(url: str) -> str:
+    """Naver 이미지 URL을 브라우저에서 로드 가능한 고해상도 URL로 변환."""
+    # 블러 파라미터 → 고해상도
+    url = url.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
+    # blogthumb.pstatic.net (CORS 차단됨) → mblogthumb-phinf.pstatic.net
+    if 'blogthumb.pstatic.net' in url:
+        url = url.replace('blogthumb.pstatic.net', 'mblogthumb-phinf.pstatic.net')
+        # type=w2 → type=w800 (blogthumb 기본 파라미터)
+        if 'type=w2' in url:
+            url = url.replace('type=w2', 'type=w800')
+    return url
+
+
 def _extract_first_image(value: str) -> str:
     """images 컬럼이 JSON 배열([{"url": "..."}])이면 첫 번째 URL을 반환, 아니면 그대로 반환."""
     if not value:
@@ -351,13 +364,11 @@ def _extract_first_image(value: str) -> str:
                     url = first.get('url', '')
                 else:
                     url = str(first)
-                # Naver 블러 썸네일 → 고해상도로 교체
-                url = url.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
-                return url
+                return _fix_naver_image_url(url)
         except Exception:
             pass
-    # 단순 문자열인 경우에도 블러 파라미터 교체
-    return value.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
+    # 단순 문자열인 경우에도 변환
+    return _fix_naver_image_url(value)
 
 
 def _normalize_relative_date(value: str) -> str:
