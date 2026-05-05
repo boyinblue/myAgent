@@ -377,9 +377,30 @@ def _normalize_relative_date(value: str) -> str:
     return value
 
 
+def _get_youtube_thumbnail(url: str) -> str:
+    """YouTube URL에서 video ID를 추출해 썸네일 URL 반환"""
+    import re
+    if not url or 'youtube' not in url.lower():
+        return ''
+    m = re.search(r'[?&]v=([a-zA-Z0-9_-]{11})', url)
+    if m:
+        return f"https://img.youtube.com/vi/{m.group(1)}/hqdefault.jpg"
+    m = re.search(r'/shorts/([a-zA-Z0-9_-]{11})', url)
+    if m:
+        return f"https://img.youtube.com/vi/{m.group(1)}/hqdefault.jpg"
+    m = re.search(r'youtu\.be/([a-zA-Z0-9_-]{11})', url)
+    if m:
+        return f"https://img.youtube.com/vi/{m.group(1)}/hqdefault.jpg"
+    return ''
+
+
 def _to_post_preview(row):
     pub = row.get('published_date') or ''
     created = row.get('created_at') or ''
+    img = _extract_first_image(row.get('representative_image') or '')
+    # YouTube 이미지 없으면 URL에서 추출
+    if not img and row.get('platform') == 'YouTube':
+        img = _get_youtube_thumbnail(row.get('url') or '')
     return {
         'id': row.get('id'),
         'title': row.get('title') or '(제목 없음)',
@@ -388,7 +409,7 @@ def _to_post_preview(row):
         'media_name': row.get('media_name') or '',
         'published_date': _normalize_relative_date(pub),
         'created_at': _normalize_relative_date(created),
-        'representative_image': _extract_first_image(row.get('representative_image') or ''),
+        'representative_image': img,
     }
 
 @app.route('/')
