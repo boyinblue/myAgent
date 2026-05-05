@@ -345,11 +345,16 @@ def _extract_first_image(value: str) -> str:
             if items and isinstance(items, list):
                 first = items[0]
                 if isinstance(first, dict):
-                    return first.get('url', '')
-                return str(first)
+                    url = first.get('url', '')
+                else:
+                    url = str(first)
+                # Naver 블러 썸네일 → 고해상도로 교체
+                url = url.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
+                return url
         except Exception:
             pass
-    return value
+    # 단순 문자열인 경우에도 블러 파라미터 교체
+    return value.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
 
 
 def _to_post_preview(row):
