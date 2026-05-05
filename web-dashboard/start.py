@@ -21,6 +21,13 @@ if str(content_crawler) not in sys.path:
     sys.path.insert(0, str(content_crawler))
 
 if __name__ == '__main__':
+    # 프로젝트 루트의 .env 로드
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(project_root / '.env')
+    except ImportError:
+        pass  # python-dotenv 미설치 시 무시
+
     # 로컬 모드: 토큰 없이 localhost 대시보드 접근 허용
     os.environ['DASHBOARD_LOCAL_MODE'] = '1'
 
