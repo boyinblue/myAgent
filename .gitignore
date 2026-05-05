@@ -20,6 +20,7 @@ token.pickle
 
 # Private archive data
 /archive_secret/
+/archive/
 
 # Temp files
 temp/
