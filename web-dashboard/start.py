@@ -25,10 +25,12 @@ if __name__ == '__main__':
     os.environ['DASHBOARD_LOCAL_MODE'] = '1'
 
     import app as dashboard_app
-    try:
-        auto_result = dashboard_app.auto_trigger_crawl_if_due()
-        print(f"[*] startup auto-crawl check: {auto_result}")
-    except Exception as exc:
-        print(f"[!] startup auto-crawl check failed: {exc}")
+    # WERKZEUG_RUN_MAIN이 설정된 경우 reloader가 재시작한 자식 프로세스이므로 건너뜀
+    if not os.environ.get('WERKZEUG_RUN_MAIN'):
+        try:
+            auto_result = dashboard_app.auto_trigger_crawl_if_due()
+            print(f"[*] startup auto-crawl check: {auto_result}")
+        except Exception as exc:
+            print(f"[!] startup auto-crawl check failed: {exc}")
 
     dashboard_app.app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=True)
