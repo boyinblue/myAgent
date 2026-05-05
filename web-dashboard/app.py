@@ -30,6 +30,9 @@ load_environment()
 import ngrok_manager
 import json
 
+# 데이터베이스 마이그레이션을 위해 ArchiveManager import
+from archive_manager import ArchiveManager
+
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
 
@@ -915,5 +918,15 @@ def api_chat():
         return jsonify({'error': str(exc)}), 500
 
 if __name__ == '__main__':
+    # 앱 시작 시 DB 마이그레이션 실행
+    try:
+        _archive_manager = ArchiveManager()
+        print("[*] DB 마이그레이션 완료")
+    except Exception as e:
+        print(f"[!] DB 마이그레이션 실패: {e}")
+    
+    # 자동 크롤링 체크
+    print(f"[*] startup auto-crawl check: {auto_trigger_crawl_if_due()}")
+    
     # 개발 환경에서는 직접 실행
     app.run(host='0.0.0.0', port=5000, debug=True)

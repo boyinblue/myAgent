@@ -32,6 +32,16 @@ if __name__ == '__main__':
     os.environ['DASHBOARD_LOCAL_MODE'] = '1'
 
     import app as dashboard_app
+    
+    # DB 마이그레이션 실행
+    if not os.environ.get('WERKZEUG_RUN_MAIN'):
+        try:
+            from archive_manager import ArchiveManager
+            _archive_manager = ArchiveManager()
+            print("[*] DB 마이그레이션 완료")
+        except Exception as e:
+            print(f"[!] DB 마이그레이션 실패: {e}")
+    
     # WERKZEUG_RUN_MAIN이 설정된 경우 reloader가 재시작한 자식 프로세스이므로 건너뜀
     if not os.environ.get('WERKZEUG_RUN_MAIN'):
         try:
