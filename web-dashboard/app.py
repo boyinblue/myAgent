@@ -664,7 +664,7 @@ def api_calendar_week():
 
 @app.route('/api/discover')
 def api_discover():
-    """달력 하단 추천 목록 API (몇 년 전 오늘 + 랜덤)"""
+    """달력 하단 추천 목록 API (몇 년 전 오늘 + 랜덤 5개)"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
 
@@ -679,7 +679,7 @@ def api_discover():
         select_sql = _build_posts_select_sql(conn)
         today = datetime.now().date()
         md = today.strftime('%m-%d')
-        current_year = today.strftime('%Y')
+        current_year = int(today.strftime('%Y'))
 
         where_clauses, base_params = _build_search_platform_where(search, platform)
 
@@ -699,11 +699,11 @@ def api_discover():
 
         history_rows = conn.execute(
             f'''
-            SELECT {select_sql}
+            SELECT {select_sql}, strftime('%Y', {DATE_EXPR}) as post_year
             FROM posts
             WHERE {' AND '.join(history_where)}
             ORDER BY {DATE_EXPR} DESC
-            LIMIT 3
+            LIMIT 10
             ''',
             history_params,
         ).fetchall()
@@ -714,13 +714,23 @@ def api_discover():
             FROM posts
             WHERE {' AND '.join(random_where)}
             ORDER BY RANDOM()
-            LIMIT 3
+            LIMIT 5
             ''',
             random_params,
         ).fetchall()
 
+        # 역사 포스트에 몇 년 전 정보 추가
+        history_posts = []
+        for row in history_rows:
+            row_dict = dict(row)
+            post_year = int(row_dict.pop('post_year', current_year))
+            years_ago = current_year - post_year
+            preview = _to_post_preview(row_dict)
+            preview['years_ago'] = years_ago
+            history_posts.append(preview)
+
         return jsonify({
-            'today_history': [_to_post_preview(dict(row)) for row in history_rows],
+            'today_history': history_posts,
             'random_posts': [_to_post_preview(dict(row)) for row in random_rows],
         })
     finally:

@@ -578,6 +578,14 @@
             text-decoration: underline;
         }
 
+        .discover-meta {
+            display: inline-block;
+            margin-left: 6px;
+            font-size: 11px;
+            color: #868e96;
+            font-weight: 500;
+        }
+
         .post-layout {
             display: grid;
             grid-template-columns: 120px 1fr;
@@ -737,7 +745,7 @@
                     </ul>
                 </div>
                 <div class="discover-card">
-                    <h4>🎲 Random Pick 3</h4>
+                    <h4>🎲 Random Pick 5</h4>
                     <ul class="discover-list" id="randomList">
                         <li>불러오는 중...</li>
                     </ul>
@@ -1167,11 +1175,27 @@
                 return;
             }
 
-            el.innerHTML = posts.slice(0, 3).map(post => `
-                <li>
-                    <a href="${escapeHtml(post.url || '#')}" target="_blank">${escapeHtml(post.title || '(제목 없음)')}</a>
-                </li>
-            `).join('');
+            // 역사 데이터인지 판단 (years_ago 필드 존재 여부)
+            const isHistory = posts.some(p => p.years_ago !== undefined);
+            
+            if (isHistory) {
+                // 몇 년 전 오늘 - 연도별 그룹
+                const maxItems = 10;
+                el.innerHTML = posts.slice(0, maxItems).map(post => `
+                    <li>
+                        <a href="${escapeHtml(post.url || '#')}" target="_blank" title="${escapeHtml(post.title || '(제목 없음)')}">${escapeHtml(post.title || '(제목 없음)')}</a>
+                        <span class="discover-meta">${post.years_ago}년 전</span>
+                    </li>
+                `).join('');
+            } else {
+                // Random Pick - 최대 5개
+                const maxItems = 5;
+                el.innerHTML = posts.slice(0, maxItems).map(post => `
+                    <li>
+                        <a href="${escapeHtml(post.url || '#')}" target="_blank" title="${escapeHtml(post.title || '(제목 없음)')}">${escapeHtml(post.title || '(제목 없음)')}</a>
+                    </li>
+                `).join('');
+            }
         }
         
         // 포스트 렌더링
