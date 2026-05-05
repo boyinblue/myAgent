@@ -280,6 +280,7 @@ def _build_posts_select_sql(conn):
         'image_url',
         'image',
         'og_image',
+        'images',
     ]
     image_col = next((col for col in image_candidates if col in columns), None)
     if image_col:
@@ -333,6 +334,24 @@ def _build_calendar_day_map(rows):
     return days
 
 
+def _extract_first_image(value: str) -> str:
+    """images 컬럼이 JSON 배열([{"url": "..."}])이면 첫 번째 URL을 반환, 아니면 그대로 반환."""
+    if not value:
+        return ''
+    if value.startswith('['):
+        try:
+            import json
+            items = json.loads(value)
+            if items and isinstance(items, list):
+                first = items[0]
+                if isinstance(first, dict):
+                    return first.get('url', '')
+                return str(first)
+        except Exception:
+            pass
+    return value
+
+
 def _to_post_preview(row):
     return {
         'id': row.get('id'),
@@ -342,7 +361,7 @@ def _to_post_preview(row):
         'media_name': row.get('media_name') or '',
         'published_date': row.get('published_date') or '',
         'created_at': row.get('created_at') or '',
-        'representative_image': row.get('representative_image') or '',
+        'representative_image': _extract_first_image(row.get('representative_image') or ''),
     }
 
 @app.route('/')
