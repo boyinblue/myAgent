@@ -316,6 +316,34 @@ def _has_search_intent(text: str) -> bool:
     return any(k in lower for k in keywords)
 
 
+def _is_smalltalk_greeting(text: str) -> bool:
+    """짧은 인사/호출 문구는 검색/이슈/대시보드 의도보다 우선해 채팅으로 처리합니다."""
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return False
+
+    # 명령어/URL은 기존 라우팅 규칙 유지
+    if normalized.startswith("/") or normalized.startswith("$"):
+        return False
+    if "http://" in normalized or "https://" in normalized:
+        return False
+
+    # 순수 인사/호출 문구 (짧은 텍스트) 보호
+    greeting_tokens = {
+        "안녕", "안녕하세요", "하이", "헬로", "hello", "hi", "hey", "ㅎㅇ", "yo",
+        "반가워", "반갑", "테스트", "ping", "퐁", "뭐해", "뭐해?",
+    }
+    if normalized in greeting_tokens:
+        return True
+
+    if len(normalized) <= 8:
+        compact = re.sub(r"\s+", "", normalized)
+        if compact in greeting_tokens:
+            return True
+
+    return False
+
+
 def _parse_help_intent(text: str) -> tuple[bool, str]:
     """일반 문장 도움말 요청을 감지하고, 세부 명령어 질의어를 반환합니다."""
     normalized = (text or "").strip()
@@ -1012,7 +1040,10 @@ def _send_telegram_message(message: str) -> bool:
         if not token or not chat_id_raw:
             return False
         
-        chat_id = int(chat_id_raw) if chat_id_raw.isdigit() else 0
+        try:
+            chat_id = int((chat_id_raw or '').strip())
+        except (TypeError, ValueError):
+            chat_id = 0
         if not chat_id:
             return False
         
@@ -1259,6 +1290,11 @@ def autopilot(user_prompt: str):
             print(_get_command_help(help_query))
         else:
             print(_get_slash_commands_help())
+        return
+
+    # 짧은 인사말은 라우터를 타지 않고 즉시 대화 응답으로 처리
+    if _is_smalltalk_greeting(user_prompt):
+        print("안녕하세요! 무엇을 도와드릴까요?\n예: /post 와인, /help, /health")
         return
     
     # 검색 의도 감지 시 즉시 검색 실행

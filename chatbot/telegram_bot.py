@@ -101,7 +101,17 @@ load_dotenv(dotenv_path)
 
 TOKEN = (os.getenv('TELEGRAM_BOT_TOKEN') or '').strip()
 chat_id_raw = (os.getenv('TELEGRAM_CHAT_ID') or '').strip()
-CHAT_ID = int(chat_id_raw) if chat_id_raw.isdigit() else 0
+
+
+def _parse_chat_id(value: str) -> int:
+    """Telegram chat_id 문자열을 안전하게 정수로 파싱합니다 (음수 그룹 ID 지원)."""
+    try:
+        return int((value or '').strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+CHAT_ID = _parse_chat_id(chat_id_raw)
 
 EXPECTED_VENV_PYTHON = str((Path(parent_dir) / ".venv" / "Scripts" / "python.exe").resolve())
 CURRENT_PYTHON = str(Path(sys.executable).resolve())
