@@ -253,28 +253,15 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
                 images = []
                 try:
                     from bs4 import BeautifulSoup
-                    import hashlib
-                    import requests
 
                     soup = BeautifulSoup(html_str or "", "html.parser")
                     for img in soup.find_all("img", src=True):
                         url = img["src"]
                         desc = img.get("alt", "")
-                        size = None
-                        sha = None
-                        try:
-                            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-                            data = r.content
-                            size = len(data)
-                            sha = hashlib.sha256(data).hexdigest()
-                        except Exception:
-                            pass
                         images.append({
                             "url": url,
                             "description": desc,
                             "blog": media_name,
-                            "size": size,
-                            "sha256": sha,
                         })
                 except Exception:
                     pass

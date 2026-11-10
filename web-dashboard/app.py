@@ -34,7 +34,9 @@ import json
 from archive_manager import ArchiveManager
 
 app = Flask(__name__)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
+_thumbnail_refresh_cache = {}
 
 # 토큰 저장 파일
 _TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
@@ -426,6 +428,64 @@ def _to_post_preview(row):
         'representative_image': img,
     }
 
+
+def _refresh_tistory_thumbnail(preview):
+    """Expired Tistory CDN thumbnails are refreshed from the public post page."""
+    if preview.get('platform') != 'Tistory':
+        return preview
+
+    image_url = preview.get('representative_image') or ''
+    if image_url and 'blog.kakaocdn.net/' not in image_url:
+        return preview
+
+    import re
+    from urllib.parse import urlsplit
+
+    expires_match = re.search(r'[?&]expires=(\d+)', image_url)
+    if image_url and not expires_match:
+        return preview
+    if expires_match and int(expires_match.group(1)) > int(datetime.now().timestamp()):
+        return preview
+
+    post_url = preview.get('url') or ''
+    parsed_url = urlsplit(post_url)
+    hostname = (parsed_url.hostname or '').lower()
+    if parsed_url.scheme != 'https' or not (hostname == 'tistory.com' or hostname.endswith('.tistory.com')):
+        return preview
+
+    now = datetime.now().timestamp()
+    cached = _thumbnail_refresh_cache.get(post_url)
+    if cached and cached[0] > now:
+        preview['representative_image'] = cached[1]
+        return preview
+
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+
+        response = requests.get(
+            post_url,
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; ArchiveDashboard/1.0)'},
+            timeout=4,
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        meta = (
+            soup.find('meta', attrs={'property': 'og:image'})
+            or soup.find('meta', attrs={'name': 'twitter:image'})
+        )
+        fresh_url = (meta.get('content') or '').strip() if meta else ''
+        if fresh_url.startswith('//'):
+            fresh_url = 'https:' + fresh_url
+        if fresh_url.startswith('https://'):
+            preview['representative_image'] = fresh_url
+            if len(_thumbnail_refresh_cache) >= 256:
+                _thumbnail_refresh_cache.clear()
+            _thumbnail_refresh_cache[post_url] = (now + 900, fresh_url)
+    except Exception:
+        pass
+    return preview
+
 @app.route('/')
 def index():
     """접속 토큰 검증"""
@@ -503,6 +563,7 @@ def api_posts():
     search = request.args.get('search', '').strip()
     platform = request.args.get('platform', '').strip()
     published_on = request.args.get('published_on', '').strip()
+    hidden_only = request.args.get('hidden_only', '0') == '1'
     
     conn = get_db_connection()
     if not conn:
@@ -515,8 +576,10 @@ def api_posts():
         where_clauses, params = _build_search_platform_where(search, platform)
         # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
         where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
-        # 숨겨진 포스트 제외
-        where_clauses.append("(is_hidden IS NULL OR is_hidden = 0)")
+        # 일반 목록은 숨긴 글을 제외하고, 숨김 보기에서는 숨긴 글만 조회
+        where_clauses.append(
+            "(is_hidden = 1)" if hidden_only else "(is_hidden IS NULL OR is_hidden = 0)"
+        )
 
         if published_on:
             where_clauses.append(f"{DATE_EXPR} = date(?)")
@@ -680,7 +743,7 @@ def api_calendar_week():
 
 @app.route('/api/discover')
 def api_discover():
-    """달력 하단 추천 목록 API (몇 년 전 오늘 + 랜덤 5개)"""
+    """대시보드 추천 목록 API (1년 전 오늘 + 랜덤 3개)"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
 
@@ -694,18 +757,19 @@ def api_discover():
     try:
         select_sql = _build_posts_select_sql(conn)
         today = datetime.now().date()
-        md = today.strftime('%m-%d')
-        current_year = int(today.strftime('%Y'))
+        try:
+            one_year_ago = today.replace(year=today.year - 1)
+        except ValueError:  # 2월 29일은 전년도 2월 28일로 대응
+            one_year_ago = today.replace(year=today.year - 1, day=28)
 
         where_clauses, base_params = _build_search_platform_where(search, platform)
 
         history_where = [
-            "strftime('%m-%d', " + DATE_EXPR + ") = ?",
-            "strftime('%Y', " + DATE_EXPR + ") < ?",
+            DATE_EXPR + " = date(?)",
             "title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')",
             "(is_hidden IS NULL OR is_hidden = 0)",
         ] + where_clauses
-        history_params = [md, current_year] + base_params
+        history_params = [one_year_ago.isoformat()] + base_params
 
         random_where = ["title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')", "(is_hidden IS NULL OR is_hidden = 0)"]
         if where_clauses:
@@ -720,7 +784,7 @@ def api_discover():
             FROM posts
             WHERE {' AND '.join(history_where)}
             ORDER BY {DATE_EXPR} DESC
-            LIMIT 10
+            LIMIT 3
             ''',
             history_params,
         ).fetchall()
@@ -731,24 +795,28 @@ def api_discover():
             FROM posts
             WHERE {' AND '.join(random_where)}
             ORDER BY RANDOM()
-            LIMIT 5
+            LIMIT 3
             ''',
             random_params,
         ).fetchall()
 
-        # 역사 포스트에 몇 년 전 정보 추가
+        # 1년 전 오늘 글임을 화면에 표시
         history_posts = []
         for row in history_rows:
             row_dict = dict(row)
-            post_year = int(row_dict.pop('post_year', current_year))
-            years_ago = current_year - post_year
+            row_dict.pop('post_year', None)
             preview = _to_post_preview(row_dict)
-            preview['years_ago'] = years_ago
-            history_posts.append(preview)
+            preview['years_ago'] = 1
+            history_posts.append(_refresh_tistory_thumbnail(preview))
+
+        random_posts = [
+            _refresh_tistory_thumbnail(_to_post_preview(dict(row)))
+            for row in random_rows
+        ]
 
         return jsonify({
             'today_history': history_posts,
-            'random_posts': [_to_post_preview(dict(row)) for row in random_rows],
+            'random_posts': random_posts,
         })
     finally:
         conn.close()

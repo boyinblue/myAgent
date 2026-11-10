@@ -328,6 +328,27 @@
             font-weight: 700;
             color: #3a4bb8;
             margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .crawl-progress-toggle {
+            padding: 4px 9px;
+            background: #fff;
+            color: #3a4bb8;
+            border: 1px solid #c7d2fe;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .crawl-progress-panel.collapsed .crawl-progress-log {
+            display: none;
+        }
+
+        .crawl-progress-panel.collapsed .crawl-progress-title {
+            margin-bottom: 0;
         }
 
         .crawl-progress-log {
@@ -441,6 +462,10 @@
             background: white;
             border-top: 1px solid #e9ecef;
             border-bottom: 1px solid #e9ecef;
+        }
+
+        .discover-home {
+            padding: 16px 30px 0;
         }
 
         .calendar-header {
@@ -593,9 +618,52 @@
         .discover-list li {
             font-size: 12px;
             color: #495057;
-            white-space: nowrap;
+        }
+
+        .discover-item {
+            display: grid;
+            grid-template-columns: 88px minmax(0, 1fr);
+            gap: 10px;
+            align-items: start;
+            padding: 8px 0;
+            border-top: 1px solid #edf0f4;
+        }
+
+        .discover-item:first-child {
+            border-top: 0;
+            padding-top: 0;
+        }
+
+        .discover-thumb {
+            width: 88px;
+            height: 62px;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+            background: #f1f3f5;
             overflow: hidden;
-            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #868e96;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .discover-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .discover-copy {
+            min-width: 0;
+        }
+
+        .discover-title {
+            display: block;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
         }
 
         .discover-list a {
@@ -670,6 +738,10 @@
                 grid-template-columns: 1fr;
             }
 
+            .discover-item {
+                grid-template-columns: 88px minmax(0, 1fr);
+            }
+
             .calendar-day {
                 min-height: 64px;
             }
@@ -725,6 +797,7 @@
                 <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
                 <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
                 <button id="statsToggleBtn" onclick="toggleStatsPanel()">📊 통계 보기</button>
+                <button id="hiddenPostsToggleBtn" onclick="toggleHiddenPosts()">🙈 숨김 글 보기</button>
             </div>
             <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
             <select id="platformFilter">
@@ -733,7 +806,10 @@
             <button onclick="searchPosts()">🔍 검색</button>
             <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
             <div id="crawlProgressPanel" class="crawl-progress-panel">
-                <div class="crawl-progress-title" id="crawlProgressTitle">크롤링 진행 상황</div>
+                <div class="crawl-progress-title">
+                    <span id="crawlProgressTitle">크롤링 진행 상황</span>
+                    <button type="button" class="crawl-progress-toggle" id="crawlProgressToggle" onclick="toggleCrawlProgress()">접기</button>
+                </div>
                 <div class="crawl-progress-log" id="crawlProgressLog">아직 실행 이력이 없습니다.</div>
             </div>
         </div>
@@ -746,7 +822,7 @@
                 <input type="url" id="crawlUrlInput" placeholder="https://example.tistory.com/123 (선택사항)"
                     style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem; margin-bottom:16px;">
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
-                    <button onclick="closeCrawlModal()" style="padding:8px 18px; border:1px solid #ddd; background:#f5f5f5; border-radius:8px; cursor:pointer;">취소</button>
+                    <button onclick="closeCrawlModal()" style="padding:8px 18px; border:1px solid #cbd5e1; background:#f3f4f6; color:#374151; border-radius:8px; cursor:pointer;">취소</button>
                     <button onclick="triggerCrawl()" style="padding:8px 18px; background:#4285f4; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">🚀 실행</button>
                 </div>
             </div>
@@ -766,25 +842,30 @@
                 </div>
             </div>
             <div class="calendar-grid" id="calendarGrid"></div>
-            <div class="discover-panel" id="discoverPanel">
+        </div>
+
+        <section class="discover-home" id="discoverPanel">
+            <div class="discover-panel">
                 <div class="discover-card">
-                    <h4>🕰 몇 년 전 오늘</h4>
+                    <h4>🕰 1년 전 오늘</h4>
                     <ul class="discover-list" id="todayHistoryList">
                         <li>불러오는 중...</li>
                     </ul>
                 </div>
                 <div class="discover-card">
-                    <h4>🎲 Random Pick 5</h4>
+                    <h4>🎲 오늘의 랜덤 글 3개</h4>
                     <ul class="discover-list" id="randomList">
                         <li>불러오는 중...</li>
                     </ul>
                 </div>
             </div>
-        </div>
+        </section>
         
         <div class="posts-list" id="postsList">
             <div class="loading">데이터를 불러오는 중...</div>
         </div>
+
+        <div class="pagination" id="pagination"></div>
 
         <div class="chatbot-panel">
             <div class="chatbot-header">AI 챗봇</div>
@@ -797,7 +878,6 @@
             </div>
         </div>
         
-        <div class="pagination" id="pagination"></div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
@@ -805,6 +885,7 @@
         let currentPage = 1;
         let platformChart = null;
         let currentView = 'list';
+        let hiddenPostsMode = false;
         let statsVisible = false;
         let selectedDate = '';
         const today = new Date();
@@ -893,7 +974,8 @@
                 per_page: 20,
                 search: search,
                 platform: platform,
-                published_on: selectedDate
+                published_on: selectedDate,
+                hidden_only: hiddenPostsMode ? '1' : '0'
             });
             
             try {
@@ -931,6 +1013,19 @@
             statsVisible = !statsVisible;
             document.getElementById('statsPanel').style.display = statsVisible ? 'block' : 'none';
             document.getElementById('statsToggleBtn').textContent = statsVisible ? '📊 통계 닫기' : '📊 통계 보기';
+        }
+
+        function toggleHiddenPosts() {
+            hiddenPostsMode = !hiddenPostsMode;
+            selectedDate = '';
+            document.getElementById('hiddenPostsToggleBtn').textContent = hiddenPostsMode
+                ? '↩ 일반 글 보기'
+                : '🙈 숨김 글 보기';
+            document.getElementById('hiddenPostsToggleBtn').classList.toggle('active', hiddenPostsMode);
+            if (currentView !== 'list') {
+                switchView('list');
+            }
+            loadPosts(1);
         }
 
         function renderCrawlStatus(data) {
@@ -975,10 +1070,30 @@
             }
         }
 
+        function setCrawlProgressCollapsed(collapsed, persist = true) {
+            const panel = document.getElementById('crawlProgressPanel');
+            const button = document.getElementById('crawlProgressToggle');
+            panel.classList.toggle('collapsed', collapsed);
+            button.textContent = collapsed ? '펼치기' : '접기';
+            button.setAttribute('aria-expanded', String(!collapsed));
+            if (persist) {
+                localStorage.setItem('crawlProgressCollapsed', String(collapsed));
+            }
+        }
+
+        function toggleCrawlProgress() {
+            const panel = document.getElementById('crawlProgressPanel');
+            setCrawlProgressCollapsed(!panel.classList.contains('collapsed'));
+        }
+
         function renderCrawlProgress(data) {
             const panel = document.getElementById('crawlProgressPanel');
             const title = document.getElementById('crawlProgressTitle');
             const log = document.getElementById('crawlProgressLog');
+
+            if (localStorage.getItem('crawlProgressCollapsed') === 'true') {
+                setCrawlProgressCollapsed(true, false);
+            }
 
             if (!data || data.error) {
                 panel.classList.add('active');
@@ -1204,27 +1319,20 @@
                 return;
             }
 
-            // 역사 데이터인지 판단 (years_ago 필드 존재 여부)
-            const isHistory = posts.some(p => p.years_ago !== undefined);
-            
-            if (isHistory) {
-                // 몇 년 전 오늘 - 연도별 그룹
-                const maxItems = 10;
-                el.innerHTML = posts.slice(0, maxItems).map(post => `
-                    <li>
-                        <a href="${escapeHtml(post.url || '#')}" target="_blank" title="${escapeHtml(post.title || '(제목 없음)')}">${escapeHtml(post.title || '(제목 없음)')}</a>
-                        <span class="discover-meta">${post.years_ago}년 전</span>
-                    </li>
-                `).join('');
-            } else {
-                // Random Pick - 최대 5개
-                const maxItems = 5;
-                el.innerHTML = posts.slice(0, maxItems).map(post => `
-                    <li>
-                        <a href="${escapeHtml(post.url || '#')}" target="_blank" title="${escapeHtml(post.title || '(제목 없음)')}">${escapeHtml(post.title || '(제목 없음)')}</a>
-                    </li>
-                `).join('');
-            }
+            const maxItems = targetId === 'randomList' ? 3 : 1;
+            const isHistory = targetId === 'todayHistoryList';
+            el.innerHTML = posts.slice(0, maxItems).map(post => `
+                <li class="discover-item">
+                    <div class="discover-thumb">${renderPostThumbnail(post.representative_image, post.title)}</div>
+                    <div class="discover-copy">
+                        <a class="discover-title" href="${escapeHtml(post.url || '#')}" target="_blank" title="${escapeHtml(post.title || '(제목 없음)')}">${escapeHtml(post.title || '(제목 없음)')}</a>
+                        <span class="discover-meta">${isHistory ? '1년 전 오늘' : `${escapeHtml(post.platform || '')} · ${formatDate(post.published_date || post.created_at)}`}</span>
+                        <div class="post-actions">
+                            <button class="post-hide-btn" onclick="togglePostHide(${Number(post.id) || 0}, this)" title="이 추천 글 숨기기">🚫 숨김</button>
+                        </div>
+                    </div>
+                </li>
+            `).join('');
         }
         
         // 포스트 렌더링
@@ -1232,7 +1340,7 @@
             const container = document.getElementById('postsList');
             
             if (posts.length === 0) {
-                container.innerHTML = '<div class="no-results">검색 결과가 없습니다.</div>';
+                container.innerHTML = `<div class="no-results">${hiddenPostsMode ? '숨김 처리된 글이 없습니다.' : '검색 결과가 없습니다.'}</div>`;
                 return;
             }
             
@@ -1253,7 +1361,7 @@
                             </div>
                             ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
                             <div class="post-actions">
-                                <button class="post-hide-btn" onclick="togglePostHide(${post.id}, this)" title="포스트 숨기기/표시하기">🚫 숨김</button>
+                                <button class="post-hide-btn" onclick="togglePostHide(${post.id}, this)" title="포스트 숨기기/표시하기">${hiddenPostsMode ? '↩ 표시' : '🚫 숨김'}</button>
                             </div>
                         </div>
                     </div>
@@ -1342,6 +1450,7 @@
                     const title = document.getElementById('crawlProgressTitle');
                     const log = document.getElementById('crawlProgressLog');
                     panel.classList.add('active');
+                    setCrawlProgressCollapsed(false);
                     title.textContent = '크롤링 진행 상황 (실시간)';
                     log.textContent = `✅ ${data.message}\n실시간 상태를 불러오는 중...`;
                     renderCrawlStatus({ running: true });
@@ -1404,6 +1513,20 @@
                 });
                 const data = await resp.json();
                 if (data.success) {
+                    const discoverItem = buttonEl.closest('.discover-item');
+                    if (discoverItem && data.is_hidden) {
+                        discoverItem.remove();
+                        loadDiscover();
+                        return;
+                    }
+
+                    if (hiddenPostsMode && !data.is_hidden) {
+                        const hiddenPostItem = document.getElementById(`post-${postId}`);
+                        if (hiddenPostItem) hiddenPostItem.remove();
+                        loadPosts(currentPage);
+                        return;
+                    }
+
                     // 포스트 아이템을 부드럽게 사라지게 함
                     const postItem = document.getElementById(`post-${postId}`);
                     if (postItem) {
@@ -1464,6 +1587,8 @@
         
         // 초기 로드
         loadStats();
+        loadDiscover();
+        setCrawlProgressCollapsed(localStorage.getItem('crawlProgressCollapsed') === 'true', false);
         switchView('list');
         loadPosts(1);
         loadCrawlStatus();

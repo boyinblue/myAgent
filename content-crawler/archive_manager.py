@@ -56,6 +56,7 @@ class ArchiveManager:
 
         self.cur = self.conn.cursor()
         self._image_url_health_cache: Dict[str, bool] = {}
+        self._ollama_disabled = False
         self._create_table()
         self._create_local_images_table()
 
@@ -1370,13 +1371,36 @@ class ArchiveManager:
     def summarize_with_ollama(self, text: str) -> Optional[str]:
         """Ollama CLI를 이용해 간단히 텍스트를 요약합니다.
 
-        Ollama가 설치되어 있지 않거나 실패하면 None을 반환합니다.
+        Ollama가 없거나 연결할 수 없으면 이번 프로세스에서는 요약을 건너뜁니다.
         """
+        if self._ollama_disabled:
+            return None
+
         try:
+            import os
+            import shutil
             import subprocess
+
+            ollama_executable = shutil.which("ollama")
+            if not ollama_executable:
+                self._ollama_disabled = True
+                return None
+
+            # Ollama가 실행되지 않는 환경에서 게시물마다 CLI를 호출하지 않도록
+            # 첫 요약 시 한 번만 API 연결을 확인합니다.
+            ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").strip()
+            if "://" not in ollama_host:
+                ollama_host = f"http://{ollama_host}"
+            try:
+                response = requests.get(f"{ollama_host.rstrip('/')}/api/tags", timeout=2)
+                response.raise_for_status()
+            except Exception:
+                self._ollama_disabled = True
+                return None
+
             # stdin으로 프롬프트 전달 (ollama run은 --prompt 플래그를 지원하지 않음)
             proc = subprocess.run(
-                ["ollama", "run", "llama2"],
+                [ollama_executable, "run", "llama2"],
                 input=text,
                 capture_output=True,
                 text=True,
@@ -1384,10 +1408,9 @@ class ArchiveManager:
             )
             if proc.returncode == 0:
                 return proc.stdout.strip()
-            else:
-                print(f"[!] Ollama 요약 오류: {proc.stderr}")
-        except Exception as e:
-            print(f"[!] Ollama 실행 실패: {e}")
+            self._ollama_disabled = True
+        except Exception:
+            self._ollama_disabled = True
         return None
 
 if __name__ == "__main__":
