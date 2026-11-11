@@ -1312,27 +1312,91 @@
             }
         }
 
+        async function loadNextRandomPost() {
+            const randomList = document.getElementById('randomList');
+
+            // 현재 화면에 남아 있는 글의 ID를 수집
+            const excludeIds = Array.from(
+                randomList.querySelectorAll('.discover-item')
+            )
+                .map(item => item.dataset.postId)
+                .filter(id => id && id !== '0');
+
+            const search = document.getElementById('searchInput').value;
+            const platform = document.getElementById('platformFilter').value;
+
+            const params = new URLSearchParams({
+                search,
+                platform,
+                exclude_ids: excludeIds.join(','),
+                random_limit: '1'
+            });
+
+            try {
+                const resp = await fetch(`/api/discover?${params}`);
+                const data = await resp.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                const newPost = data.random_posts?.[0];
+
+                if (newPost) {
+                    // 새 글 하나만 기존 목록 마지막에 추가
+                    randomList.insertAdjacentHTML(
+                        'beforeend',
+                        renderDiscoverItem(newPost)
+                    );
+                } else if (randomList.querySelectorAll('.discover-item').length === 0) {
+                    randomList.innerHTML = '<li>항목 없음</li>';
+                }
+            } catch (e) {
+                console.error('새 랜덤 글 로드 실패:', e);
+            }
+        }
+
+        function renderDiscoverItem(post, isHistory = false) {
+            return `
+                <li class="discover-item" data-post-id="${Number(post.id) || 0}">
+                    <div class="discover-thumb">
+                        ${renderPostThumbnail(post.representative_image, post.title)}
+                    </div>
+                    <div class="discover-copy">
+                        <a class="discover-title"
+                        href="${escapeHtml(post.url || '#')}"
+                        target="_blank"
+                        title="${escapeHtml(post.title || '(제목 없음)')}">
+                            ${escapeHtml(post.title || '(제목 없음)')}
+                        </a>
+                        <span class="discover-meta">
+                            ${isHistory
+                                ? '1년 전 오늘'
+                                : `${escapeHtml(post.platform || '')} · ${formatDate(post.published_date || post.created_at)}`}
+                        </span>
+                        <div class="post-actions">
+                            <button class="post-hide-btn"
+                                    onclick="togglePostHide(${Number(post.id) || 0}, this)"
+                                    title="이 추천 글 숨기기">
+                                🚫 숨김
+                            </button>
+                        </div>
+                    </div>
+                </li>
+            `;
+        }
+
         function renderDiscoverList(targetId, posts) {
             const el = document.getElementById(targetId);
+            const maxItems = targetId === 'randomList' ? 3 : 1;
+            const isHistory = targetId === 'todayHistoryList';
+
             if (!posts || posts.length === 0) {
                 el.innerHTML = '<li>항목 없음</li>';
                 return;
             }
 
-            const maxItems = targetId === 'randomList' ? 3 : 1;
-            const isHistory = targetId === 'todayHistoryList';
-            el.innerHTML = posts.slice(0, maxItems).map(post => `
-                <li class="discover-item">
-                    <div class="discover-thumb">${renderPostThumbnail(post.representative_image, post.title)}</div>
-                    <div class="discover-copy">
-                        <a class="discover-title" href="${escapeHtml(post.url || '#')}" target="_blank" title="${escapeHtml(post.title || '(제목 없음)')}">${escapeHtml(post.title || '(제목 없음)')}</a>
-                        <span class="discover-meta">${isHistory ? '1년 전 오늘' : `${escapeHtml(post.platform || '')} · ${formatDate(post.published_date || post.created_at)}`}</span>
-                        <div class="post-actions">
-                            <button class="post-hide-btn" onclick="togglePostHide(${Number(post.id) || 0}, this)" title="이 추천 글 숨기기">🚫 숨김</button>
-                        </div>
-                    </div>
-                </li>
-            `).join('');
+            el.innerHTML = posts.slice(0, maxItems).map(post => renderDiscoverItem(post, isHistory)).join('');
         }
         
         // 포스트 렌더링
@@ -1514,9 +1578,22 @@
                 const data = await resp.json();
                 if (data.success) {
                     const discoverItem = buttonEl.closest('.discover-item');
+
                     if (discoverItem && data.is_hidden) {
-                        discoverItem.remove();
-                        loadDiscover();
+                        const randomList = document.getElementById('randomList');
+
+                        if (randomList.contains(discoverItem)) {
+                            // 랜덤 추천 3개 중 숨긴 카드 하나만 제거
+                            discoverItem.remove();
+
+                            // 남은 카드 2개는 유지하고 새 글 하나만 추가
+                            await loadNextRandomPost();
+                        } else {
+                            // 1년 전 오늘 목록은 기존 방식 유지
+                            discoverItem.remove();
+                            loadDiscover();
+                        }
+
                         return;
                     }
 

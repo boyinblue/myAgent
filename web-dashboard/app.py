@@ -749,6 +749,21 @@ def api_discover():
 
     search = request.args.get('search', '').strip()
     platform = request.args.get('platform', '').strip()
+    exclude_ids_raw = request.args.get('exclude_ids', '').strip()
+    try:
+        exclude_ids = [
+            int(x) for x in exclude_ids_raw.split(',')
+            if x.strip().isdigit()
+        ]
+    except ValueError:
+        exclude_ids = []
+
+    try:
+        random_limit = int(request.args.get('random_limit', 3))
+    except ValueError:
+        random_limit = 3
+
+    random_limit = max(0, min(random_limit, 3))
 
     conn = get_db_connection()
     if not conn:
@@ -778,6 +793,11 @@ def api_discover():
             random_where.append('1=1')
         random_params = base_params[:]
 
+        if exclude_ids:
+            placeholders = ','.join('?' for _ in exclude_ids)
+            random_where.append(f"id NOT IN ({placeholders})")
+            random_params.extend(exclude_ids)
+
         history_rows = conn.execute(
             f'''
             SELECT {select_sql}, strftime('%Y', {DATE_EXPR}) as post_year
@@ -795,9 +815,9 @@ def api_discover():
             FROM posts
             WHERE {' AND '.join(random_where)}
             ORDER BY RANDOM()
-            LIMIT 3
+            LIMIT ?
             ''',
-            random_params,
+            random_params + [random_limit],
         ).fetchall()
 
         # 1년 전 오늘 글임을 화면에 표시
