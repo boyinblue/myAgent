@@ -1114,6 +1114,7 @@ class ArchiveManager:
                 raw_file = os.path.join(raw_path, filename + ".html")
                 with open(raw_file, "w", encoding="utf-8") as rf:
                     rf.write(raw_html)
+                print(f"raw_html 저장 완료 : {raw_file}")
             except Exception as e:
                 print(f"[!] raw_html 저장 실패: {e}")
 

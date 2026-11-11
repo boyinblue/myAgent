@@ -280,11 +280,25 @@ def archive_posts(posts, archive_mgr, platform_type="", media_name="", raw_dir: 
 
             # 이미지 리스트 생성
             html_for_images = post.get("html") or content or summary or ""
-            images = extract_images(html_for_images)
-            if images is None:
+            extracted_images = extract_images(html_for_images)
+
+            # 크롤러에서 추출한 대표 이미지(og:image)도 유지
+            images = post.get("images") or []
+            if not isinstance(images, list):
                 images = []
-            elif not isinstance(images, list):
-                images = list(images)
+
+            # 본문에서 추출한 이미지와 합치되 URL 중복 제거
+            seen_image_urls = {
+                img.get("url")
+                for img in images
+                if isinstance(img, dict) and img.get("url")
+            }
+
+            for img in extracted_images:
+                image_url = img.get("url")
+                if image_url and image_url not in seen_image_urls:
+                    images.append(img)
+                    seen_image_urls.add(image_url)
 
             # raw_html 준비 (있으면 html 저장)
             raw_html = post.get("html") or ""
@@ -599,20 +613,29 @@ def main():
     print("=" * 60)
     print()
 
+    import time
+    debug_start = time.perf_counter()
+
     # 텔레그램 테스트 모드
     if args.test_telegram:
+        step_start = time.perf_counter()
         test_telegram_config()
+        print(f"[TIME] test_telegram_config: {time.perf_counter() - debug_start:.2f}초", flush=True)
         return
 
     # 설정 로드
+    step_start = time.perf_counter()
     config = load_config("config.json")
+    print(f"[TIME] load_config: {time.perf_counter() - debug_start:.2f}초", flush=True)
     if not config:
         return
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
 
+    step_start = time.perf_counter()
     archive_root = config.get("archive_root", "archive")
+    print(f"[TIME] ArchiveManager: {time.perf_counter() - step_start:.2f}초", flush=True)
     if not os.path.isabs(archive_root):
         archive_root = os.path.abspath(os.path.join(project_root, archive_root))
 
@@ -620,12 +643,19 @@ def main():
     if not os.path.isabs(raw_dir):
         raw_dir = os.path.abspath(os.path.join(project_root, raw_dir))
 
+    step_start = time.perf_counter()
     archive_mgr = ArchiveManager(archive_root)  # 아카이브 매니저 인스턴스 생성
+    print(f"[TIME] ArchiveManager: {time.perf_counter() - step_start:.2f}초", flush=True)
+
+    step_start = time.perf_counter()
     backfilled_versions = archive_mgr.backfill_crawler_versions()
+    print(f"[TIME] backfill_crawler_versions: {time.perf_counter() - step_start:.2f}초", flush=True)
     if backfilled_versions:
         print(f"[+] 기존 아카이브 crawler_version 역채움 완료: {backfilled_versions}건")
 
+    step_start = time.perf_counter()
     duplicate_cleanup_result = archive_mgr.cleanup_duplicate_url_files()
+    print(f"[TIME] cleanup_duplicate_url_files: {time.perf_counter() - step_start:.2f}초", flush=True)
     if duplicate_cleanup_result.get("duplicate_groups"):
         print(
             "[+] URL 중복 md 정리 완료 "
@@ -649,7 +679,9 @@ def main():
     # 단건 URL 모드
     if args.url:
         print(f"[*] 단건 URL 처리 모드: {args.url}")
+
         result = parse_url(args.url, archive_mgr=archive_mgr)
+
         if not result:
             print("[!] URL 처리 실패")
             return
@@ -657,10 +689,72 @@ def main():
         post = result["post"]
         platform_type = result["platform_type"]
         media_name = result["media_name"]
-        archive_posts([post], archive_mgr, platform_type=platform_type, media_name=media_name, raw_dir=raw_dir)
+
+        posts = [post]
+
+        # 네이버 블로그인 경우 설정 파일의 내부 링크 옵션 적용
+        if platform_type == "NaverBlog":
+            naver_config = config.get("platforms", {}).get("naver_blog", {})
+            blog_info = next(
+                (
+                    item for item in naver_config.get("blogs", [])
+                    if item.get("blog_id") == media_name
+                ),
+                {}
+            )
+
+            follow_internal_links = bool(
+                blog_info.get("follow_internal_links", False)
+            )
+
+            if follow_internal_links:
+                crawler = NaverBlogCrawler(
+                    media_name,
+                    rss_url=blog_info.get("rss_url"),
+                    request_interval=blog_info.get("request_interval_seconds", 1.0),
+                    request_interval_min=blog_info.get(
+                        "request_interval_min_seconds",
+                        blog_info.get("request_interval_seconds", 1.0)
+                    ),
+                    request_interval_max=blog_info.get(
+                        "request_interval_max_seconds",
+                        blog_info.get("request_interval_seconds", 1.0)
+                    ),
+                    archive_mgr=archive_mgr,
+                    crawler_version=CRAWLER_VERSION,
+                )
+
+                internal_posts = crawler.crawl_internal_links(
+                    seed_urls=[post.get("link", args.url)],
+                    max_pages=int(blog_info.get("internal_max_pages", 100)),
+                    max_depth=int(blog_info.get("internal_max_depth", 2)),
+                    respect_robots=bool(
+                        blog_info.get("respect_robots_txt", True)
+                    ),
+                )
+
+                # 최초 게시물과 내부 링크 게시물 합치기
+                posts_by_url = {
+                    item.get("link"): item
+                    for item in [post] + internal_posts
+                    if item.get("link")
+                }
+                posts = list(posts_by_url.values())
+
+                print(f"[+] 내부 링크 탐색 결과: {len(posts)}개 게시물")
+
+        archive_posts(
+            posts,
+            archive_mgr,
+            platform_type=platform_type,
+            media_name=media_name,
+            raw_dir=raw_dir,
+        )
+
         if args.index_local_images:
             _index_local_images_once()
-        print(f"[+] 단건 URL 아카이브 완료: {post.get('title', '제목 없음')}")
+
+        print(f"[+] 단건 URL 아카이브 완료: {len(posts)}개 게시물 처리")
         return
 
     # 스케줄러 모드

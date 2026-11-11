@@ -233,7 +233,6 @@ class NaverBlogCrawler:
 
     def parse_url(self, url, respect_robots: bool = True):
         """단일 URL을 파싱하여 포스트 정보를 리턴합니다."""
-        print(f"[*] {url}에서 포스트 정보 추출 중...")
 
         def _normalize_published_date(raw_text: str) -> str:
             value = (raw_text or "").strip()
@@ -264,6 +263,8 @@ class NaverBlogCrawler:
 
         try:
             normalized_url = self._normalize_naver_post_url(url)
+
+            print(f"[*] {url}, {normalized_url}에서 포스트 정보 추출 중...")
 
             if normalized_url != url:
                 print(f"[*] 모바일 URL로 변환: {normalized_url}")
@@ -352,37 +353,51 @@ class NaverBlogCrawler:
                 content_text = "(비공개 글) 본문 비공개 또는 접근 권한이 없습니다."
                 summary = summary or "비공개 글(접근 제한)"
 
-            # 내부 포스트 링크만 추출 (크롤링 가능한 링크)
+            # 게시물 본문 안의 링크만 추출
             links = []
-            for a_tag in soup.find_all('a', href=True):
-                href = a_tag['href'].strip()
-                link_text = a_tag.get_text(strip=True)
-                if not href:
-                    continue
-                
-                # 절대 URL로 변환
-                absolute_url = urljoin(url, href)
-                
-                # 정규화 시도
-                normalized = self._normalize_naver_post_url(absolute_url)
-                
-                # 내부 블로그 포스트 링크만 추가
-                if normalized and self._is_internal_blog_url(normalized):
-                    links.append({"url": normalized, "text": link_text})
+
+            if content_html:
+                content_soup = BeautifulSoup(content_html, "html.parser")
+
+                current_normalized = self._normalize_naver_post_url(url)
+
+                for a_tag in content_soup.find_all("a", href=True):
+                    href = a_tag["href"].strip()
+                    link_text = a_tag.get_text(strip=True)
+
+                    if not href:
+                        continue
+
+                    absolute_url = urljoin(url, href)
+                    normalized = self._normalize_naver_post_url(absolute_url)
+
+                    # 같은 블로그의 다른 게시물만 추가
+                    if (
+                        normalized
+                        and normalized != current_normalized
+                        and self._is_internal_blog_url(normalized)
+                    ):
+                        links.append({
+                            "url": normalized,
+                            "text": link_text
+                        })
 
             # 중복 제거
-            seen_urls = set()
             unique_links = []
+            seen_urls = set()
+
             for link in links:
-                if link['url'] not in seen_urls:
-                    seen_urls.add(link['url'])
+                if link["url"] not in seen_urls:
+                    seen_urls.add(link["url"])
                     unique_links.append(link)
+
             links = unique_links
 
-            if links:
-                print(f"[*] 내부 포스트 링크 발견: {len(links)}개")
-                for i, link in enumerate(links[:5]):  # 처음 5개만 출력
-                    print(f"  {i+1}. {link['url']}")
+            print(f"[*] 본문 내부 포스트 링크 발견: {len(links)}개")
+            for i, link in enumerate(links[:10], 1):
+                print(f"  {i}. {link['url']}")
+
+            is_private_post = not content_html and not published
 
             post = {
                 "title": title,
@@ -392,8 +407,11 @@ class NaverBlogCrawler:
                 "content": content_text,
                 "html": content_html,
                 "images": images,
-                "tags": ["__private__", "private"],
-                "comments": "[system] 네이버 모바일 응답에서 본문/작성일 누락으로 비공개 글로 분류됨",
+                "tags": ["__private__", "private"] if is_private_post else [],
+                "comments": (
+                    "[system] 네이버 모바일 응답에서 본문/작성일 누락으로 비공개 글로 분류됨"
+                    if is_private_post else ""
+                ),
                 "platform": "NaverBlog",
                 "media_name": self.blog_id,
                 "resolved_url": normalized_url,
@@ -462,9 +480,18 @@ class NaverBlogCrawler:
                 print(f"[i] robots.txt 정책으로 건너뜀: {current_url}")
                 continue
 
-            if self.archive_mgr and self.crawler_version and self.archive_mgr.should_skip_crawl(current_url, self.crawler_version):
-                print(f"[i] 동일 버전으로 이미 처리됨, 건너뜁니다: {current_url}")
-                continue
+            # DB에 이미 존재하는 글이어도 링크 탐색은 수행해야 합니다.
+            # 저장 여부와 링크 탐색 여부를 분리합니다.
+            already_archived = (
+                self.archive_mgr
+                and self.crawler_version
+                and self.archive_mgr.should_skip_crawl(
+                    current_url, self.crawler_version
+                )
+            )
+
+            if already_archived:
+                print(f"[i] 기존 아카이브 글: 링크 탐색을 위해 페이지 확인 - {current_url}")
 
             post = self.parse_url(current_url, respect_robots=respect_robots)
             if post:
@@ -588,8 +615,6 @@ class NaverBlogCrawler:
             post["link"] = link
             dedup[link] = post
         posts = list(dedup.values())
-        if self.archive_mgr and self.crawler_version:
-            posts = [post for post in posts if not self.archive_mgr.should_skip_crawl(post.get("link", ""), self.crawler_version)]
 
         if follow_internal_links:
             seed_urls = [p.get("link", "") for p in posts if p.get("link")]
