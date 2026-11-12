@@ -44,7 +44,6 @@ jobs:
               Write-Host "[*] 전체 크롤링 실행"
               python content-crawler/main.py
           }
-        shell: pwsh
 
       - name: Commit and Push DB changes
         working-directory: .
