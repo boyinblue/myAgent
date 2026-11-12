@@ -16,7 +16,8 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     defaults:
       run:
-        shell: bash
+        shell: powershell   # 👈 윈도우 기본 PowerShell 사용 (경로 충돌 방지)
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,37 +40,51 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
-          if [ -n "${{ github.event.inputs.url }}" ]; then
-            echo "[*] 단건 URL 크롤링: ${{ github.event.inputs.url }}"
-            python content-crawler/main.py --url "${{ github.event.inputs.url }}"
-          else
-            echo "[*] 전체 크롤링 실행"
-            python content-crawler/main.py
-          fi
+          $targetUrl = "${{ github.event.inputs.url }}"
+          if (-not [string]::IsNullOrEmpty($targetUrl)) {
+              Write-Host "[*] 단건 URL 크롤링: $targetUrl"
+              python content-crawler/main.py --url "$targetUrl"
+          } else {
+              Write-Host "[*] 전체 크롤링 실행"
+              python content-crawler/main.py
+          }
 
       - name: Commit and Push DB changes
-        working-directory: .
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet -- archive/archive_index.db; then
-            echo "No changes to commit"
-            exit 0
-          fi
+          $status = git status --porcelain archive/archive_index.db
+          if (-not $status) {
+              Write-Host "No changes to commit"
+              exit 0
+          }
 
           git add archive/archive_index.db
-          git commit -m "chore: update archive index DB [skip ci]"
+          git commit -m "ci: use self-hosted runner"
           git push
 
       - name: Send Telegram Notification
-        if: success()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          MESSAGE="✅ 콘텐츠 아카이브 추가 완료%0A%0A🔗 URL: ${{ github.event.inputs.url }}%0A📦 Workflow: ${{ github.workflow }}%0A🚀 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${TELEGRAM_CHAT_ID}" \
-            -d "text=${MESSAGE}" \
-            -d "parse_mode=HTML" || echo "Telegram notification failed (non-blocking)"
+          $token = $env:TELEGRAM_BOT_TOKEN
+          $chatId = $env:TELEGRAM_CHAT_ID
+          $urlInput = "${{ github.event.inputs.url }}"
+          $workflowName = "${{ github.workflow }}"
+          $serverUrl = "${{ github.server_url }}"
+          $repo = "${{ github.repository }}"
+          $runId = "${{ github.run_id }}"
+          
+          $message = "✅ 콘텐츠 아카이브 추가 완료`n`n🔗 URL: $urlInput`n📦 Workflow: $workflowName`n🚀 Run: $serverUrl/$repo/actions/runs/$runId"
+          
+          try {
+              Invoke-RestMethod -Uri "https://api.telegram.org/bot${token}/sendMessage" -Method Post -Body @{
+                  chat_id = $chatId
+                  text = $message
+                  parse_mode = "HTML"
+              }
+          } catch {
+              Write-Host "Telegram notification failed (non-blocking)"
+          }
