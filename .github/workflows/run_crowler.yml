@@ -14,6 +14,9 @@ on:
 jobs:
   archive:
     runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,14 +39,13 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
-          $targetUrl = "${{ github.event.inputs.url }}"
-          if (-not [string]::IsNullOrEmpty($targetUrl)) {
-              Write-Host "[*] 단건 URL 크롤링: $targetUrl"
-              python content-crawler/main.py --url "$targetUrl"
-          } else {
-              Write-Host "[*] 전체 크롤링 실행"
-              python content-crawler/main.py
-          }
+          if [ -n "${{ github.event.inputs.url }}" ]; then
+            echo "[*] 단건 URL 크롤링: ${{ github.event.inputs.url }}"
+            python content-crawler/main.py --url "${{ github.event.inputs.url }}"
+          else
+            echo "[*] 전체 크롤링 실행"
+            python content-crawler/main.py
+          fi
 
       - name: Commit and Push DB changes
         working-directory: .
