@@ -1,8 +1,17 @@
-# PC 부팅 시 서비스 자동 시작 설정 스크립트
+﻿# PC 부팅 시 서비스 자동 시작 설정 스크립트
 # 관리자 권한 없이 현재 사용자의 작업 스케줄러에 등록합니다
 
 $projectRoot = $PSScriptRoot
+if (-not (Test-Path $projectRoot)) {
+    Write-Error "프로젝트 루트를 찾을 수 없습니다: $projectRoot"
+    exit 1
+}
+
 $venvPython  = Join-Path $projectRoot '.venv\Scripts\python.exe'
+if (-not (Test-Path $venvPython)) {
+    Write-Error "Python 환경을 찾을 수 없습니다: $venvPython"
+    exit 1
+}
 
 # ─────────────────────────────────────────────
 # 공통 헬퍼
@@ -58,15 +67,14 @@ function Register-ServiceTask {
 Write-Host ""
 Write-Host "=== 텔레그램 봇 자동 시작 등록 ===" -ForegroundColor Cyan
 
-$botLog = Join-Path $env:LOCALAPPDATA 'myAgent\chatbot_logs\autostart_bot.log'
-$botLogDir = Split-Path $botLog -Parent
+$botLogDir = Join-Path $env:LOCALAPPDATA 'myAgent\chatbot_logs'
 if (-not (Test-Path $botLogDir)) { New-Item -ItemType Directory -Path $botLogDir -Force | Out-Null }
 
 Unregister-ScheduledTask -TaskName "myAgent_TelegramBot" -Confirm:$false -ErrorAction SilentlyContinue
 
 $botAction = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
-    -Argument "-ExecutionPolicy RemoteSigned -NonInteractive -File `"$(Join-Path $projectRoot 'start_bot_auto_restart.ps1')`" >> `"$botLog`" 2>&1" `
+    -Argument "-NoProfile -ExecutionPolicy RemoteSigned -NonInteractive -File `"$(Join-Path $projectRoot 'start_bot_auto_restart.ps1')`"" `
     -WorkingDirectory $projectRoot
 
 $botTrigger  = New-ScheduledTaskTrigger -AtLogOn
