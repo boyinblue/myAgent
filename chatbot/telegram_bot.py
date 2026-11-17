@@ -113,7 +113,15 @@ def _parse_chat_id(value: str) -> int:
 
 CHAT_ID = _parse_chat_id(chat_id_raw)
 
-EXPECTED_VENV_PYTHON = str((Path(parent_dir) / ".venv" / "Scripts" / "python.exe").resolve())
+# OS에 따라 venv 내부 파이썬 실행 경로 동적 분기
+if sys.platform == "win32":
+    venv_python_path = Path(parent_dir) / ".venv" / "Scripts" / "python.exe"
+    recommended_cmd = ".venv\\Scripts\\python.exe chatbot/telegram_bot.py"
+else:
+    venv_python_path = Path(parent_dir) / ".venv" / "bin" / "python"
+    recommended_cmd = ".venv/bin/python chatbot/telegram_bot.py"
+
+EXPECTED_VENV_PYTHON = str(venv_python_path.resolve())
 CURRENT_PYTHON = str(Path(sys.executable).resolve())
 
 print(f"[*] Telegram Bot Token: {'Set' if TOKEN else 'Not Set'}")
@@ -1059,12 +1067,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text=f"❌ 오류: {exc}")
 
 if __name__ == '__main__':
-    if CURRENT_PYTHON.lower() != EXPECTED_VENV_PYTHON.lower():
+    # 가상환경 내부에서 실행 중인지 여부 확인 (base_prefix와 prefix가 다르면 가상환경)
+    is_in_venv = (
+        hasattr(sys, "real_prefix")
+        or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
+        or ".venv" in sys.executable
+    )
+
+    if not is_in_venv:
         print("[!] 잘못된 Python 환경으로 실행되었습니다.")
-        print(f"[!] 현재: {CURRENT_PYTHON}")
+        print(f"[!] 현재: {sys.executable}")
         print(f"[!] 권장: {EXPECTED_VENV_PYTHON}")
         print("[!] 아래 명령으로 실행하세요:")
-        print(f"    {EXPECTED_VENV_PYTHON} chatbot/telegram_bot.py")
+        print(f"    {recommended_cmd}")
         sys.exit(1)
 
     if not _acquire_single_instance_lock(BOT_LOCK_FILE):
