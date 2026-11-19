@@ -1068,7 +1068,16 @@
                     body: JSON.stringify({password: input.value})
                 });
                 const data = await readApiJson(resp);
-                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                if (!resp.ok) {
+                    if (resp.status === 429) {
+                        const minutes = Math.max(1, Math.ceil(Number(data.retry_after || 0) / 60));
+                        throw new Error(`로그인 시도가 잠겼습니다. 약 ${minutes}분 후 다시 시도하세요.`);
+                    }
+                    if (resp.status === 401 && Number.isFinite(Number(data.remaining_attempts))) {
+                        throw new Error(`비밀번호가 올바르지 않습니다. 남은 시도: ${data.remaining_attempts}회`);
+                    }
+                    throw new Error(data.error || `HTTP ${resp.status}`);
+                }
                 window.dashboardAdminAuthenticated = true;
                 closeAdminLogin(true);
             } catch (e) {

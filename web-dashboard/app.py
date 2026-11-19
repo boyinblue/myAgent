@@ -9,6 +9,7 @@ import sqlite3
 import io
 import hmac
 import threading
+import time
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from pathlib import Path
@@ -41,6 +42,12 @@ app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
 _thumbnail_refresh_cache = {}
+_admin_login_failures: dict[str, list[float]] = {}
+_admin_login_locked_until: dict[str, float] = {}
+_admin_login_lock = threading.Lock()
+ADMIN_LOGIN_MAX_FAILURES = 5
+ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
+ADMIN_LOGIN_LOCK_SECONDS = 30 * 60
 
 # 토큰 저장 파일
 _TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
@@ -221,10 +228,36 @@ def api_admin_login():
         return jsonify({'error': 'Admin login requires HTTPS or localhost'}), 400
     expected = os.getenv('DASHBOARD_ADMIN_PASSWORD', '')
     supplied = str((request.get_json(silent=True) or {}).get('password', ''))
+    client_ip = (request.remote_addr or 'unknown').strip()
+    now = time.time()
+    with _admin_login_lock:
+        locked_until = _admin_login_locked_until.get(client_ip, 0)
+        if locked_until > now:
+            retry_after = max(1, int(locked_until - now))
+            response = jsonify({'error': 'Too many failed attempts', 'retry_after': retry_after})
+            response.status_code = 429
+            response.headers['Retry-After'] = str(retry_after)
+            return response
+        _admin_login_locked_until.pop(client_ip, None)
     if not expected:
         return jsonify({'error': 'Admin password not configured'}), 503
     if not hmac.compare_digest(supplied, expected):
-        return jsonify({'error': 'Invalid admin password'}), 401
+        with _admin_login_lock:
+            failures = [stamp for stamp in _admin_login_failures.get(client_ip, []) if now - stamp < ADMIN_LOGIN_WINDOW_SECONDS]
+            failures.append(now)
+            _admin_login_failures[client_ip] = failures
+            remaining = max(0, ADMIN_LOGIN_MAX_FAILURES - len(failures))
+            if len(failures) >= ADMIN_LOGIN_MAX_FAILURES:
+                _admin_login_locked_until[client_ip] = now + ADMIN_LOGIN_LOCK_SECONDS
+                _admin_login_failures.pop(client_ip, None)
+                response = jsonify({'error': 'Too many failed attempts', 'retry_after': ADMIN_LOGIN_LOCK_SECONDS})
+                response.status_code = 429
+                response.headers['Retry-After'] = str(ADMIN_LOGIN_LOCK_SECONDS)
+                return response
+        return jsonify({'error': 'Invalid admin password', 'remaining_attempts': remaining}), 401
+    with _admin_login_lock:
+        _admin_login_failures.pop(client_ip, None)
+        _admin_login_locked_until.pop(client_ip, None)
     session['admin_authenticated'] = True
     return jsonify({'success': True})
 
