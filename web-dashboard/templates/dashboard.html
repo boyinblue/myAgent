@@ -1005,6 +1005,15 @@
         let crawlProgressTimer = null;
         let adminLoginResolver = null;
 
+        async function readApiJson(response) {
+            const text = await response.text();
+            try {
+                return text ? JSON.parse(text) : {};
+            } catch (e) {
+                throw new Error(`서버가 JSON 대신 HTML을 반환했습니다 (HTTP ${response.status}). 대시보드를 재시작하고 새로고침하세요.`);
+            }
+        }
+
         function switchTab(tabName) {
             if (tabName === 'settings' && !window.dashboardAdminAuthenticated) {
                 adminLogin().then((ok) => { if (ok) switchTab('settings'); });
@@ -1058,7 +1067,7 @@
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({password: input.value})
                 });
-                const data = await resp.json();
+                const data = await readApiJson(resp);
                 if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
                 window.dashboardAdminAuthenticated = true;
                 closeAdminLogin(true);
