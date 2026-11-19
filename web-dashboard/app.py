@@ -8,6 +8,7 @@ import sys
 import sqlite3
 import io
 import hmac
+import threading
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from pathlib import Path
@@ -239,6 +240,45 @@ def api_admin_status():
 def api_admin_logout():
     session.pop('admin_authenticated', None)
     return jsonify({'success': True})
+
+
+def _service_restart_command(service: str) -> list[str] | None:
+    if os.name == 'nt':
+        task_names = {
+            'telegram': 'myAgent_TelegramBot',
+            'dashboard': 'myAgent_WebDashboard',
+            'crawler': 'myAgent_Crawler',
+        }
+        task = task_names.get(service)
+        return ['schtasks', '/Run', '/TN', task] if task else None
+    units = {
+        'telegram': ('restart', 'myagent-telegram.service'),
+        'dashboard': ('restart', 'myagent-dashboard.service'),
+        'crawler': ('start', 'myagent-crawler.service'),
+    }
+    action_unit = units.get(service)
+    return ['systemctl', '--user', *action_unit] if action_unit else None
+
+
+@app.route('/api/admin/restart-service', methods=['POST'])
+def api_admin_restart_service():
+    if not is_authenticated() or not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
+    service = str((request.get_json(silent=True) or {}).get('service', '')).strip().lower()
+    command = _service_restart_command(service)
+    if not command:
+        return jsonify({'error': 'Unsupported service'}), 400
+
+    def restart_later():
+        try:
+            subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+        except Exception:
+            app.logger.exception('Service restart failed: %s', service)
+
+    timer = threading.Timer(1.0, restart_later)
+    timer.daemon = True
+    timer.start()
+    return jsonify({'success': True, 'service': service, 'message': 'Restart scheduled'})
 
 def validate_token(token):
     """토큰 유효성 검증 (파일 기반, 제한 횟수 사용)"""
@@ -606,6 +646,13 @@ def api_health():
 
     services = []
 
+    services.append({
+        'name': 'Dashboard Runtime',
+        'status': 'healthy',
+        'detail': f'PID {os.getpid()}',
+        'restart_key': 'dashboard',
+    })
+
     db_path = project_root / 'archive' / 'archive_index.db'
     try:
         with sqlite3.connect(db_path) as conn:
@@ -653,12 +700,13 @@ def api_health():
             if not body.get('ok'):
                 raise RuntimeError(body.get('description', 'Telegram API returned ok=false'))
             username = (body.get('result') or {}).get('username', 'bot')
-            services.append({'name': 'Telegram', 'status': 'healthy', 'detail': f'@{username}'})
+            services.append({'name': 'Telegram', 'status': 'healthy', 'detail': f'@{username}', 'restart_key': 'telegram'})
         except Exception as exc:
             services.append({
                 'name': 'Telegram',
                 'status': 'unhealthy',
                 'detail': f'{type(exc).__name__}: API check failed',
+                'restart_key': 'telegram',
             })
 
     credentials_dir = project_root / 'credentials' / 'google'

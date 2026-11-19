@@ -174,6 +174,13 @@
             line-height: 1.5;
             overflow-wrap: anywhere;
         }
+
+        .health-restart {
+            margin-top: 14px;
+            padding: 7px 11px;
+            font-size: 12px;
+            background: #334155;
+        }
         
         .stats {
             display: grid;
@@ -1042,12 +1049,31 @@
                             </span>
                         </h3>
                         <div class="health-detail">${escapeHtml(service.detail || '')}</div>
+                        ${service.restart_key ? `<button class="health-restart" onclick="restartService('${escapeHtml(service.restart_key)}', this)">서비스 재시작</button>` : ''}
                     </article>
                 `).join('') || '<div class="no-results">검사할 서비스가 없습니다.</div>';
                 checkedAt.textContent = `마지막 검사: ${formatDateTime(data.checked_at)}`;
             } catch (e) {
                 grid.innerHTML = `<div class="no-results">Health Check 실패: ${escapeHtml(e.message)}</div>`;
                 checkedAt.textContent = '검사 실패';
+            }
+        }
+
+        async function restartService(service, button) {
+            if (!confirm(`${service} 서비스를 재시작하시겠습니까?`)) return;
+            button.disabled = true;
+            try {
+                const resp = await fetch('/api/admin/restart-service', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({service})
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                alert('재시작을 예약했습니다. 잠시 후 상태를 다시 확인하세요.');
+                if (service !== 'dashboard') setTimeout(loadHealth, 5000);
+            } catch (e) {
+                alert(`재시작 실패: ${e.message}`);
+                button.disabled = false;
             }
         }
         
