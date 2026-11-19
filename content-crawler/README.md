@@ -4,13 +4,13 @@
 
 **다중 플랫폼 자동 콘텐츠 수집 & 아카이브 시스템**
 
-네이버 블로그, Tistory, GitHub Pages, YouTube에서 콘텐츠를 자동으로 수집하고 매일 아침 Anniversary 포스트를 텔레그램으로 알려줍니다.
+네이버 블로그, Tistory, GitHub Pages, YouTube에서 콘텐츠를 자동으로 수집하고 Anniversary 포스트와 Random Post 3개를 텔레그램으로 알려줍니다.
 
 ## 주요 기능 ✨
 
 - **🔄 다중 플랫폼**: 네이버, Tistory, GitHub Pages, YouTube 통합 지원
 - **📊 스마트 크롤링**: RSS + 리스트 페이지 + 내부 링크 + Sitemap 활용
-- **📅 자동 다이제스트**: 일일 정해진 시간에 몇 년 전 오늘의 포스트 텔레그램 발송
+- **📅 자동 다이제스트**: PC 로그인 후 하루 한 번, 몇 년 전 오늘의 포스트와 Random Post 3개를 텔레그램으로 발송
 - **🔐 보안**: 민감한 정보(.env)를 git에서 제외하고 안전하게 관리
 - **📦 스마트 아카이브**: 자동 폴더링(년/월), 중복 제거, 메타데이터 인덱싱
 
@@ -70,8 +70,8 @@ python main.py
 # 텔레그램 테스트
 python main.py --test-telegram
 
-# 일일 다이제스트 실행 (스케줄러)
-python main.py --schedule
+# 기념일 다이제스트 즉시 발송
+python run_anniversary_digest.py
 ```
 
 ## 사용 방법 📖
@@ -92,7 +92,7 @@ python main.py --max-posts 10
 --use-sitemap           # Sitemap 활용 (Tistory)
 --max-posts N           # 최대 N개까지만
 --test-telegram         # 텔레그램 설정 테스트
---schedule              # 스케줄러 모드 (일일 다이제스트)
+--schedule              # 상주형 고정 시간 스케줄러 모드
 ```
 
 ### 예시
@@ -143,42 +143,38 @@ content-crawler/
 
 ## Anniversary 기능 🎂
 
-일일 정해진 시간에 몇 년 전 오늘 작성된 포스트를 텔레그램으로 발송합니다.
+Windows PC 로그인 시 오늘의 기념일 포스트와 Random Post 3개를 확인해 텔레그램으로 보냅니다. Random Post는 기존 `/post random`처럼 플랫폼·제목·날짜·URL을 한 메시지에 표시하며, 웹페이지 미리보기는 사용하지 않습니다. 기념일 포스트가 없으면 그 안내를 함께 보내며, 성공적으로 발송된 경우 하루 한 번만 실행됩니다. PC가 꺼져 있던 날의 다이제스트는 다음 로그인 때 현재 날짜 기준으로 발송합니다.
 
-### 설정
+### 작업 스케줄러 등록
 
-```json
-"scheduler": {
-  "enabled": true,
-  "daily_digest_time": "08:00",
-  "anniversary_days": [1, 7, 30, 365],
-  "send_via_telegram": true
-}
+저장소 루트에서 PowerShell로 한 번 실행합니다.
+
+```powershell
+.\tools\setup_daily_digest.ps1
 ```
 
-### 실행
+태스크는 사용자 로그인 시 실행되며, Telegram 발송에 실패하면 최대 3회 재시도합니다. 마지막 성공 날짜는 `%LOCALAPPDATA%\myAgent\daily_digest`에 저장되고 실행 로그는 `daily_digest.log`에서 확인할 수 있습니다.
 
-```bash
-# 스케줄러 시작
-python main.py --schedule
+```powershell
+# 지금 바로 실행
+Start-ScheduledTask -TaskName 'myAgent_DailyDigest'
 
-# 또는 시스템 스케줄러에 추가:
-# Linux crontab: 0 8 * * * cd /path && python main.py --schedule
-# Windows Task Scheduler: 매일 08:00에 python main.py --schedule
+# 태스크 제거
+Unregister-ScheduledTask -TaskName 'myAgent_DailyDigest' -Confirm:$false
 ```
 
 ### 예시 메시지
 
 ```
-📆 오늘의 Anniversary Posts (3개)
+📆 오늘의 Daily Digest
 
-1년 전 오늘 (2025-03-01)
-제목: 어떤 포스트 제목
-🔗 보기
+오늘의 기념일 포스트가 없습니다.
 
-365년 전 오늘 (1661-03-01)  
-제목: 오래된 포스트
-🔗 보기
+🎲 랜덤 포스트 추천 (3개)
+1. [Tistory] 게시물 제목
+   📅 2024-01-02
+   🔗 https://example.com/post
+...
 ```
 
 ## 설정 가이드 📝

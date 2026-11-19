@@ -3,7 +3,7 @@
 """텔레그램 메시지 발송 기능"""
 
 import requests
-from typing import Optional, List
+from typing import Dict, List, Optional
 from utils.secrets import get_telegram_token, get_telegram_chat_id
 
 
@@ -24,7 +24,12 @@ class TelegramNotifier:
         """텔레그램이 설정되었는지 확인합니다."""
         return bool(self.token and self.chat_id)
 
-    def send_message(self, message: str, parse_mode: str = "HTML") -> bool:
+    def send_message(
+        self,
+        message: str,
+        parse_mode: str = "HTML",
+        link_preview_options: Optional[Dict[str, object]] = None,
+    ) -> bool:
         """
         메시지를 발송합니다.
 
@@ -46,13 +51,29 @@ class TelegramNotifier:
                 "text": message,
                 "parse_mode": parse_mode,
             }
+            if link_preview_options is not None:
+                payload["link_preview_options"] = link_preview_options
             response = requests.post(url, json=payload, timeout=10)
-            response.raise_for_status()
-            print(f"[+] 텔레그램 메시지 발송 성공")
-            return True
-        except Exception as e:
-            print(f"[ERROR] 텔레그램 발송 실패: {e}")
+        except requests.exceptions.RequestException as exc:
+            print(f"[ERROR] 텔레그램 발송 실패 ({type(exc).__name__})")
             return False
+
+        if not response.ok:
+            print(f"[ERROR] 텔레그램 발송 실패 (HTTP {response.status_code})")
+            return False
+
+        try:
+            result = response.json()
+        except ValueError:
+            print("[ERROR] 텔레그램 발송 응답을 해석할 수 없습니다.")
+            return False
+
+        if not result.get("ok"):
+            print(f"[ERROR] 텔레그램 발송 실패: {result.get('description', 'unknown error')}")
+            return False
+
+        print("[+] 텔레그램 메시지 발송 성공")
+        return True
 
     def send_digest(self, title: str, items: List[str]) -> bool:
         """
@@ -69,14 +90,15 @@ class TelegramNotifier:
             print("[!] 발송할 항목이 없습니다.")
             return False
 
-        message = f"<b>{title}</b>\n\n"
-        for item in items[:50]:  # 최대 50개까지만
-            message += f"• {item}\n"
+        message = f"<b>{title}</b>\n\n" + "\n\n".join(items[:50])
 
         if len(items) > 50:
             message += f"\n... 외 {len(items) - 50}개 항목"
 
-        return self.send_message(message)
+        return self.send_message(
+            message,
+            link_preview_options={"is_disabled": True},
+        )
 
     def send_errors(self, errors: List[str]) -> bool:
         """

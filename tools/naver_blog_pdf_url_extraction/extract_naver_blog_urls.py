@@ -239,7 +239,7 @@ def write_readme(
         f"- 지정한 집계 범위 밖의 날짜: {outside_range:,}개",
         "- 집계 기간: 2014년 1월~2026년 12월",
         "",
-        "월별 0건은 현재 폴더의 PDF에서 해당 월로 판별된 글이 없다는 뜻이며, "
+        "월별 빈칸은 현재 폴더의 PDF에서 해당 월로 판별된 글이 없다는 뜻이며, "
         "그 달에 블로그 글이 없었다는 뜻은 아닙니다.",
         "",
         "## 월별 게시글 수",
@@ -247,13 +247,28 @@ def write_readme(
         "| 연도 | 1월 | 2월 | 3월 | 4월 | 5월 | 6월 | 7월 | 8월 | 9월 | 10월 | 11월 | 12월 |",
         "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    month_widths = {
+        month: max(
+            2,
+            *(len(f"{counts[(year, month)]:,}") for year in range(START_MONTH.year, END_MONTH.year + 1)),
+        )
+        for month in range(1, 13)
+    }
     for year in range(START_MONTH.year, END_MONTH.year + 1):
         monthly_counts = " | ".join(
-            f"{counts[(year, month)]:,}" for month in range(1, 13)
+            (
+                f"{counts[(year, month)]:02,}" if counts[(year, month)] else ""
+            ).rjust(month_widths[month])
+            for month in range(1, 13)
         )
         lines.append(f"| {year} | {monthly_counts} |")
     lines.extend(
         [
+            "",
+            "## 비고",
+            "",
+            "- 2016년에는 작성된 블로그 글이 없습니다.",
+            "- 2020년 9월부터 12월까지 작성된 블로그 글이 없습니다.",
             "",
             "## 입력 PDF",
             "",

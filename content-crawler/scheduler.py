@@ -4,6 +4,7 @@
 
 import os
 import sqlite3
+import html
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import schedule
@@ -38,6 +39,7 @@ class AnniversaryFinder:
             print(f"[!] DB 파일이 없습니다: {self.db_file}")
             return []
 
+        conn = None
         try:
             conn = sqlite3.connect(self.db_file)
             conn.row_factory = sqlite3.Row
@@ -52,13 +54,10 @@ class AnniversaryFinder:
             )
             posts = [dict(row) for row in cur.fetchall()]
         except sqlite3.Error as exc:
-            print(f"[!] DB 조회 실패: {exc}")
-            return []
+            raise RuntimeError(f"아카이브 DB 조회 실패: {exc}") from exc
         finally:
-            try:
+            if conn is not None:
                 conn.close()
-            except Exception:
-                pass
 
         anniversary_posts: List[Dict] = []
 
@@ -97,6 +96,50 @@ class AnniversaryFinder:
 
         return sorted(anniversary_posts, key=lambda x: x.get("years_ago", 999))
 
+    def find_random_posts(
+        self, count: int = 3, exclude_urls: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """Return random visible posts, optionally excluding selected URLs."""
+        if not os.path.exists(self.db_file):
+            raise RuntimeError(f"아카이브 DB 파일이 없습니다: {self.db_file}")
+
+        conditions = [
+            "title IS NOT NULL",
+            "title NOT IN ('', 'untitled', '제목 없음')",
+            "url IS NOT NULL",
+            "url != ''",
+            "(is_hidden IS NULL OR is_hidden = 0)",
+        ]
+        params = []
+        excluded_urls = [url for url in (exclude_urls or []) if url]
+        if excluded_urls:
+            placeholders = ",".join("?" for _ in excluded_urls)
+            conditions.append(f"url NOT IN ({placeholders})")
+            params.extend(excluded_urls)
+        params.append(count)
+
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_file)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT title, url, platform, published_date, created_at
+                FROM posts
+                WHERE {" AND ".join(conditions)}
+                ORDER BY RANDOM()
+                LIMIT ?
+                """,
+                params,
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        except sqlite3.Error as exc:
+            raise RuntimeError(f"아카이브 랜덤 포스트 조회 실패: {exc}") from exc
+        finally:
+            if conn is not None:
+                conn.close()
+
     def format_anniversary_message(self, posts: List[Dict]) -> List[str]:
         """
         anniversary 포스트들을 텍스트 메시지로 포맷합니다.
@@ -107,7 +150,7 @@ class AnniversaryFinder:
         messages: List[str] = []
 
         if not posts:
-            return ["오늘의 anniversary 포스트가 없습니다."]
+            return ["오늘의 기념일 포스트가 없습니다."]
 
         for post in posts:
             years_ago = post.get("years_ago", "?")
@@ -120,6 +163,38 @@ class AnniversaryFinder:
                 msg += f"\n🔗 <a href='{link}'>보기</a>"
             messages.append(msg)
 
+        return messages
+
+    def format_random_post_messages(self, posts: List[Dict]) -> List[str]:
+        messages = []
+        for index, post in enumerate(posts, 1):
+            title = (post.get("title") or "제목 없음").strip()
+            if len(title) > 160:
+                title = title[:157] + "..."
+            platform = html.escape(post.get("platform") or "기타")
+            message = f"{index}. [{platform}] {html.escape(title)}"
+
+            published = post.get("published_date") or post.get("created_at") or ""
+            published = published.split("T")[0]
+            if published and published != "None":
+                message += f"\n   📅 {html.escape(published)}"
+
+            url = post.get("url") or ""
+            if url:
+                message += f"\n   🔗 {html.escape(url)}"
+            messages.append(message)
+
+        return messages
+
+    def format_daily_digest(
+        self, anniversary_posts: List[Dict], random_posts: List[Dict]
+    ) -> List[str]:
+        messages = self.format_anniversary_message(anniversary_posts)
+        messages.append(f"<b>🎲 랜덤 포스트 추천 ({len(random_posts)}개)</b>")
+        if random_posts:
+            messages.extend(self.format_random_post_messages(random_posts))
+        else:
+            messages.append("표시할 Random Post가 없습니다.")
         return messages
 
 
@@ -158,13 +233,10 @@ class DailyDigestScheduler:
         anniversary_days = self.config.get("anniversary_days", [1, 7, 30, 365])
         finder = AnniversaryFinder(self.archive_root)
         anniversary_posts = finder.find_anniversary_posts(anniversary_days)
-
-        if anniversary_posts:
-            messages = finder.format_anniversary_message(anniversary_posts)
-            title = f"📆 오늘의 Anniversary Posts ({len(anniversary_posts)}개)"
-            self.notifier.send_digest(title, messages)
-        else:
-            print("[i] 오늘의 anniversary 포스트가 없습니다.")
+        anniversary_urls = [post.get("link") for post in anniversary_posts]
+        random_posts = finder.find_random_posts(exclude_urls=anniversary_urls)
+        messages = finder.format_daily_digest(anniversary_posts, random_posts)
+        self.notifier.send_digest("📆 오늘의 Daily Digest", messages)
 
     def start(self):
         """스케줄러를 시작합니다."""

@@ -94,6 +94,8 @@ def _reload_ai_skill_modules() -> bool:
 
 # 로그 설정 (FW 디버깅용 로그처럼)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # 환경변수 설정(위치 : 프로젝트 루트의 .env)
 dotenv_path = os.path.join(parent_dir, '.env')
