@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # self-hosted runner의 ignored archive/ DB를 보존합니다.
+          clean: false
       
       - name: Set up Python
         uses: actions/setup-python@v5

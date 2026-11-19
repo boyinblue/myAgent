@@ -40,11 +40,16 @@ def backup_sqlite_db(
 
 def find_project_root(start_file: Path, target_rel: Path) -> Path:
     for candidate in [start_file.resolve().parent, *start_file.resolve().parents]:
+        if (candidate / "config.json").is_file():
+            return candidate
+
+    for candidate in [start_file.resolve().parent, *start_file.resolve().parents]:
         if (candidate / target_rel).is_file():
             return candidate
-    # 못 찾으면 기존 기준(스크립트 위치의 2단계 상위 또는 부모)으로 폴백
+
+    # tools/DB/backup_db.py 구조를 기준으로 프로젝트 루트로 폴백
     parents = list(start_file.resolve().parents)
-    return parents[1] if len(parents) > 1 else start_file.resolve().parent
+    return parents[2] if len(parents) > 2 else start_file.resolve().parent
 
 
 def main() -> None:
@@ -72,6 +77,13 @@ def main() -> None:
         help="보관할 최신 백업 파일 수 (0이면 무제한)",
     )
     args = parser.parse_args()
+
+    backup_path = backup_sqlite_db(
+        src_path=args.src.resolve(),
+        backup_dir=args.out_dir.resolve(),
+        keep_latest=args.keep,
+    )
+    print(f"[OK] DB backup created: {backup_path}")
 
 
 if __name__ == "__main__":

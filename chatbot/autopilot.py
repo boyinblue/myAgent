@@ -174,32 +174,62 @@ def ask_gemini(prompt: str, system_prompt: str, model: str = "gemini-1.5-flash")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    fallback_models = [
+        m for m in [
+            model,
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
+        ]
+        if m
+    ]
+    # 중복 제거하되 순서 유지
+    models_to_try = list(dict.fromkeys(fallback_models))
+
     data = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": prompt}]}],
     }
-    try:
-        response = requests.post(url, json=data, timeout=120)
-        response.raise_for_status()
-        body = response.json()
-    except Exception as exc:
-        raise RuntimeError(f"Gemini 요청 실패: {exc}") from exc
 
+    last_exc: Exception | None = None
+    for idx, target_model in enumerate(models_to_try):
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{target_model}:generateContent?key={api_key}"
+        )
+        max_retries = 3 if idx == 0 else 1
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=data, timeout=120)
+                if response.status_code in (429, 500, 502, 503, 504):
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)
+                        continue
+                    response.raise_for_status()
+                response.raise_for_status()
+                body = response.json()
+                candidates = body.get("candidates", [])
+                if not candidates:
+                    return ""
+                parts = candidates[0].get("content", {}).get("parts", [])
+                texts = [p.get("text", "") for p in parts if p.get("text")]
+                return "\n".join(texts).strip()
+            except Exception as exc:
+                last_exc = exc
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                break
 
-    candidates = body.get("candidates", [])
-    if not candidates:
-        return ""
-    parts = candidates[0].get("content", {}).get("parts", [])
-    texts = [p.get("text", "") for p in parts if p.get("text")]
-    return "\n".join(texts).strip()
+    raise RuntimeError(f"Gemini 요청 실패: {last_exc}") from last_exc
 
 
 def ask_model(prompt: str, system_prompt: str) -> str:
     provider = str(
         get_config_value(
             "autopilot.provider",
-            os.getenv("AUTOPILOT_PROVIDER", "ollama"),
+            "ollama",
         )
     ).strip().lower()
 
@@ -207,7 +237,7 @@ def ask_model(prompt: str, system_prompt: str) -> str:
         model = str(
             get_config_value(
                 "autopilot.models.gemini",
-                os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+                "gemini-1.5-flash",
             )
         )
         return ask_gemini(prompt, system_prompt, model=model)
