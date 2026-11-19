@@ -52,12 +52,17 @@ def call_gemini(contents: list[dict], system_prompt: str, primary_model: str) ->
     for idx, model in enumerate(models):
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent?key={api_key}"
+            f"{model}:generateContent"
         )
         max_retries = 3 if idx == 0 else 1
         for attempt in range(max_retries):
             try:
-                resp = requests.post(url, json=payload, timeout=120)
+                resp = requests.post(
+                    url,
+                    headers={"x-goog-api-key": api_key},
+                    json=payload,
+                    timeout=120,
+                )
                 if resp.status_code in (429, 500, 502, 503, 504):
                     if attempt < max_retries - 1:
                         time.sleep(2 ** attempt)
@@ -73,6 +78,10 @@ def call_gemini(contents: list[dict], system_prompt: str, primary_model: str) ->
             except Exception as exc:
                 last_exc = exc
                 status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status in (401, 403):
+                    raise RuntimeError(
+                        f"Gemini 인증 실패 (HTTP {status}). GEMINI_API_KEY를 확인하세요."
+                    ) from exc
                 if status in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue

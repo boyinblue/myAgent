@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import runpy
 import sys
@@ -195,12 +196,17 @@ def ask_gemini(prompt: str, system_prompt: str, model: str = "gemini-1.5-flash")
     for idx, target_model in enumerate(models_to_try):
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{target_model}:generateContent?key={api_key}"
+            f"{target_model}:generateContent"
         )
         max_retries = 3 if idx == 0 else 1
         for attempt in range(max_retries):
             try:
-                response = requests.post(url, json=data, timeout=120)
+                response = requests.post(
+                    url,
+                    headers={"x-goog-api-key": api_key},
+                    json=data,
+                    timeout=120,
+                )
                 if response.status_code in (429, 500, 502, 503, 504):
                     if attempt < max_retries - 1:
                         time.sleep(2 ** attempt)
@@ -217,6 +223,10 @@ def ask_gemini(prompt: str, system_prompt: str, model: str = "gemini-1.5-flash")
             except Exception as exc:
                 last_exc = exc
                 status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status in (401, 403):
+                    raise RuntimeError(
+                        f"Gemini 인증 실패 (HTTP {status}). GEMINI_API_KEY를 확인하세요."
+                    ) from exc
                 if status in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue
@@ -1021,6 +1031,11 @@ def answer_chat(user_prompt: str, skills_md: str) -> str:
 
 
 def local_natural_fallback(user_prompt: str, reason: str = "fallback") -> str:
+    if reason == "provider_auth_error":
+        return (
+            "AI 제공자 인증에 실패했습니다. 서버의 GEMINI_API_KEY를 확인하거나 새 키로 교체해 주세요.\n"
+            "- 상태: provider_auth_error"
+        )
     return (
         "요청은 확인했어요. 현재 AI 추론 경로에 일시적인 문제가 있어 기본 모드로 응답합니다.\n"
         f"- 상태: {reason}\n"
@@ -1364,7 +1379,10 @@ def autopilot(user_prompt: str):
     try:
         decision = decide_action(user_prompt, skills_md)
     except Exception as exc:
-        print(local_natural_fallback(user_prompt, reason="router_exception"))
+        status = getattr(getattr(exc.__cause__, "response", None), "status_code", None)
+        reason = "provider_auth_error" if status in (401, 403) else "router_exception"
+        logging.error("Autopilot router failed (%s): %s", reason, exc)
+        print(local_natural_fallback(user_prompt, reason=reason))
         return
 
     action = decision.get("action", "chat")
