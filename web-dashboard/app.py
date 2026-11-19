@@ -191,7 +191,12 @@ def auto_trigger_crawl_if_due() -> dict:
         return {'triggered': False, 'reason': 'error', 'error': str(exc)}
 
 def is_local_mode() -> bool:
-    return (os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() == '1')
+    if os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() != '1':
+        return False
+
+    # 0.0.0.0에 바인딩하더라도 인증 우회는 서버 자체 요청에만 허용합니다.
+    remote_addr = (request.remote_addr or '').strip()
+    return remote_addr in {'127.0.0.1', '::1'}
 
 
 def is_authenticated() -> bool:
