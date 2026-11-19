@@ -19,6 +19,7 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(ROOT_DIR)
 TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
 BOT_STARTED_AT = time.time()
+MODEL_STATE_PATH = Path(PROJECT_ROOT) / ".runtime" / "autopilot_model_state.json"
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
@@ -175,15 +176,7 @@ def ask_gemini(prompt: str, system_prompt: str, model: str = "gemini-1.5-flash")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
-    fallback_models = [
-        m for m in [
-            model,
-            "gemini-3.1-flash-lite-preview",
-            "gemini-3.5-flash-lite",
-            "gemini-3.8-flash",
-        ]
-        if m
-    ]
+    fallback_models = [model] if model else []
     # 중복 제거하되 순서 유지
     models_to_try = list(dict.fromkeys(fallback_models))
 
@@ -244,13 +237,26 @@ def ask_model(prompt: str, system_prompt: str) -> str:
     ).strip().lower()
 
     if provider == "gemini":
-        model = str(
-            get_config_value(
-                "autopilot.models.gemini",
-                "gemini-1.5-flash",
-            )
-        )
-        return ask_gemini(prompt, system_prompt, model=model)
+        configured = get_config_value("autopilot.models.gemini", ["gemini-flash-lite-latest"])
+        models = configured if isinstance(configured, list) else [configured]
+        try:
+            if MODEL_STATE_PATH.is_file():
+                last_model = json.loads(MODEL_STATE_PATH.read_text(encoding="utf-8")).get("last_successful_gemini_model")
+                if last_model in models:
+                    models = [last_model, *[item for item in models if item != last_model]]
+        except Exception:
+            pass
+        last_error = None
+        for model in models:
+            try:
+                result = ask_gemini(prompt, system_prompt, model=str(model))
+                MODEL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                MODEL_STATE_PATH.write_text(json.dumps({"last_successful_gemini_model": model}), encoding="utf-8")
+                return result
+            except Exception as exc:
+                last_error = exc
+                continue
+        logging.warning("All Gemini models failed; falling back to Ollama: %s", last_error)
 
     model = str(
         get_config_value(

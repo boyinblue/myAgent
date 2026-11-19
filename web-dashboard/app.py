@@ -7,6 +7,7 @@ import subprocess
 import sys
 import sqlite3
 import io
+import hmac
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from pathlib import Path
@@ -203,6 +204,37 @@ def is_local_mode() -> bool:
 
 def is_authenticated() -> bool:
     return is_local_mode() or bool(session.get('authenticated'))
+
+
+def is_admin() -> bool:
+    return bool(session.get('admin_authenticated'))
+
+
+@app.route('/api/admin/login', methods=['POST'])
+def api_admin_login():
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+    expected = os.getenv('DASHBOARD_ADMIN_PASSWORD', '')
+    supplied = str((request.get_json(silent=True) or {}).get('password', ''))
+    if not expected:
+        return jsonify({'error': 'Admin password not configured'}), 503
+    if not hmac.compare_digest(supplied, expected):
+        return jsonify({'error': 'Invalid admin password'}), 401
+    session['admin_authenticated'] = True
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/status')
+def api_admin_status():
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+    return jsonify({'authenticated': is_admin(), 'configured': bool(os.getenv('DASHBOARD_ADMIN_PASSWORD'))})
+
+
+@app.route('/api/admin/logout', methods=['POST'])
+def api_admin_logout():
+    session.pop('admin_authenticated', None)
+    return jsonify({'success': True})
 
 def validate_token(token):
     """토큰 유효성 검증 (파일 기반, 제한 횟수 사용)"""
@@ -565,6 +597,8 @@ def api_health():
     """Return a secret-free health summary for dashboard dependencies."""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
+    if not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
 
     services = []
 
@@ -623,6 +657,32 @@ def api_health():
                 'detail': f'{type(exc).__name__}: API check failed',
             })
 
+    credentials_dir = project_root / 'credentials' / 'google'
+    drive_credentials = credentials_dir / 'google_oauth2_credentials.json'
+    drive_token = credentials_dir / 'google_oauth2_token.json'
+    if not drive_credentials.exists():
+        drive_credentials = project_root / 'google_oauth2_credentials.json'
+    if not drive_token.exists():
+        drive_token = project_root / 'google_oauth2_token.json'
+    if not drive_credentials.exists() or not drive_token.exists():
+        services.append({'name': 'Google Drive', 'status': 'not_configured', 'detail': 'OAuth credentials or token not found'})
+    else:
+        try:
+            from google.oauth2.credentials import Credentials
+            from google.auth.transport.requests import Request
+            from googleapiclient.discovery import build
+            scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.readonly']
+            creds = Credentials.from_authorized_user_file(str(drive_token), scopes)
+            if not creds.valid and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            if not creds.valid:
+                raise RuntimeError('OAuth token is invalid')
+            drive = build('drive', 'v3', credentials=creds, cache_discovery=False)
+            user = drive.about().get(fields='user(displayName,emailAddress)').execute().get('user', {})
+            services.append({'name': 'Google Drive', 'status': 'healthy', 'detail': user.get('emailAddress') or user.get('displayName') or 'connected'})
+        except Exception as exc:
+            services.append({'name': 'Google Drive', 'status': 'unhealthy', 'detail': f'{type(exc).__name__}: API check failed'})
+
     ngrok_exe = shutil.which('ngrok')
     if not ngrok_exe:
         services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'executable not found'})
@@ -665,6 +725,8 @@ def api_posts():
     platform = request.args.get('platform', '').strip()
     published_on = request.args.get('published_on', '').strip()
     hidden_only = request.args.get('hidden_only', '0') == '1'
+    if hidden_only and not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
     
     conn = get_db_connection()
     if not conn:
@@ -1061,6 +1123,8 @@ def api_toggle_hide():
     """포스트 숨김/표시 토글"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
+    if not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
 
     payload = request.get_json(silent=True) or {}
     post_id = payload.get('id')

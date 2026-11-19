@@ -8,6 +8,7 @@ __pycache__/
 *.pid
 .dashboard.pid
 .access_tokens.json
+/.runtime/
 
 # SQLite databases
 *.db-journal
@@ -17,6 +18,7 @@ google_oauth2_credentials.json
 google_service_credentials.json
 google_oauth2_token.json
 token.pickle
+/credentials/
 
 # Private archive data
 /archive_secret/

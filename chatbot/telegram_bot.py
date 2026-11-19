@@ -152,8 +152,13 @@ BOT_LOCK_FILE = CHATBOT_LOG_FILE.with_name("telegram_bot.lock")
 _WINDOWS_MUTEX_HANDLE = None
 _WINDOWS_MUTEX_NAME = "Global\\myAgent_telegram_bot_singleton"
 
-GDRIVE_CREDENTIAL_FILE = Path(parent_dir) / "google_oauth2_credentials.json"
-GDRIVE_TOKEN_FILE = Path(parent_dir) / "google_oauth2_token.json"
+_GDRIVE_CREDENTIAL_DIR = Path(parent_dir) / "credentials" / "google"
+GDRIVE_CREDENTIAL_FILE = _GDRIVE_CREDENTIAL_DIR / "google_oauth2_credentials.json"
+GDRIVE_TOKEN_FILE = _GDRIVE_CREDENTIAL_DIR / "google_oauth2_token.json"
+if not GDRIVE_CREDENTIAL_FILE.exists():
+    GDRIVE_CREDENTIAL_FILE = Path(parent_dir) / "google_oauth2_credentials.json"
+if not GDRIVE_TOKEN_FILE.exists():
+    GDRIVE_TOKEN_FILE = Path(parent_dir) / "google_oauth2_token.json"
 GDRIVE_SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.readonly",
