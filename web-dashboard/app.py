@@ -703,6 +703,7 @@ def api_health():
     github_token, repo, workflow, _ = _get_github_dispatch_settings()
     if not github_token:
         services.append({'name': 'GitHub Actions', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
+        services.append({'name': 'Actions Runner', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
     else:
         try:
             import requests
@@ -715,6 +716,34 @@ def api_health():
                 'name': 'GitHub Actions',
                 'status': 'unhealthy',
                 'detail': f'{type(exc).__name__}: API check failed',
+            })
+
+        try:
+            import requests
+            runners_url = f'https://api.github.com/repos/{repo}/actions/runners?per_page=100'
+            response = requests.get(runners_url, headers=_github_headers(github_token), timeout=5)
+            response.raise_for_status()
+            runners = response.json().get('runners', [])
+            expected_labels = {'self-hosted', 'linux', 'arm64'}
+            matches = []
+            for runner in runners:
+                labels = {str(item.get('name', '')).lower() for item in runner.get('labels', [])}
+                if expected_labels.issubset(labels):
+                    matches.append(runner)
+            online = [runner for runner in matches if runner.get('status') == 'online']
+            if online:
+                names = ', '.join(f"{runner.get('name', 'runner')} ({'busy' if runner.get('busy') else 'idle'})" for runner in online)
+                services.append({'name': 'Actions Runner', 'status': 'healthy', 'detail': names})
+            elif matches:
+                names = ', '.join(str(runner.get('name', 'runner')) for runner in matches)
+                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': f'offline: {names}'})
+            else:
+                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': 'Linux ARM64 self-hosted runner not found'})
+        except Exception as exc:
+            services.append({
+                'name': 'Actions Runner',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: runner API check failed (repo admin permission may be required)',
             })
 
     telegram_token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()

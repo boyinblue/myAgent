@@ -5,10 +5,10 @@ on:
 
 jobs:
   run-digest:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Linux, ARM64]
     defaults:
       run:
-        shell: powershell
+        shell: bash
     
     steps:
       - name: Checkout code

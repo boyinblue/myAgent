@@ -13,14 +13,16 @@ on:
 
 jobs:
   archive:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Linux, ARM64]
     defaults:
       run:
-        shell: powershell   # 👈 윈도우 기본 PowerShell 사용 (경로 충돌 방지)
+        shell: bash   # 👈 리눅스 기본 bash 사용 (경로 충돌 방지)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          clean: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,31 +36,31 @@ jobs:
 
       - name: Run Archive Manager
         env:
+          TARGET_URL: ${{ github.event.inputs.url }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
-          $targetUrl = "${{ github.event.inputs.url }}"
-          if (-not [string]::IsNullOrEmpty($targetUrl)) {
-              Write-Host "[*] 단건 URL 크롤링: $targetUrl"
-              python content-crawler/main.py --url "$targetUrl"
-          } else {
-              Write-Host "[*] 전체 크롤링 실행"
-              python content-crawler/main.py
-          }
+          if [[ -n "$TARGET_URL" ]]; then
+            echo "[*] 단건 URL 크롤링: $TARGET_URL"
+            python content-crawler/main.py --url "$TARGET_URL"
+          else
+            echo "[*] 전체 크롤링 실행"
+            python content-crawler/main.py
+          fi
 
       - name: Commit and Push DB changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          $status = git status --porcelain archive/archive_index.db
-          if (-not $status) {
-              Write-Host "No changes to commit"
-              exit 0
-          }
+          status="$(git status --porcelain archive/archive_index.db)"
+          if [[ -z "$status" ]]; then
+            echo "No changes to commit"
+            exit 0
+          fi
 
           git add archive/archive_index.db
           git commit -m "ci: use self-hosted runner"
@@ -68,26 +70,32 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_URL: ${{ github.event.inputs.url }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          $token = $env:TELEGRAM_BOT_TOKEN
-          $chatId = $env:TELEGRAM_CHAT_ID
-          $urlInput = "${{ github.event.inputs.url }}"
-          $workflowName = "${{ github.workflow }}"
-          $serverUrl = "${{ github.server_url }}"
-          $repo = "${{ github.repository }}"
-          $runId = "${{ github.run_id }}"
-          
-          $message = "✅ 콘텐츠 아카이브 추가 완료`n`n🔗 URL: $urlInput`n📦 Workflow: $workflowName`n🚀 Run: $serverUrl/$repo/actions/runs/$runId"
-          $payload = @{
-              chat_id = $chatId
-              text = $message
-              parse_mode = "HTML"
-              link_preview_options = @{ is_disabled = $true }
-          } | ConvertTo-Json -Depth 4
-          $utf8Body = [System.Text.Encoding]::UTF8.GetBytes($payload)
-          
-          try {
-              Invoke-RestMethod -Uri "https://api.telegram.org/bot${token}/sendMessage" -Method Post -ContentType "application/json; charset=utf-8" -Body $utf8Body
-          } catch {
-              Write-Host "Telegram notification failed (non-blocking)"
-          }
+          python - <<'PY'
+          import json, os, urllib.request
+          message = (
+              "✅ 콘텐츠 아카이브 추가 완료\n\n"
+              f"🔗 URL: {os.environ.get('TARGET_URL', '')}\n"
+              f"📦 Workflow: {os.environ['WORKFLOW_NAME']}\n"
+              f"🚀 Run: {os.environ['SERVER_URL']}/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}"
+          )
+          payload = json.dumps({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": message,
+              "link_preview_options": {"is_disabled": True},
+          }, ensure_ascii=False).encode("utf-8")
+          request = urllib.request.Request(
+              f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+              data=payload,
+              headers={"Content-Type": "application/json; charset=utf-8"},
+          )
+          try:
+              urllib.request.urlopen(request, timeout=15).read()
+          except Exception as exc:
+              print(f"Telegram notification failed (non-blocking): {type(exc).__name__}")
+          PY
