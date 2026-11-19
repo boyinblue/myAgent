@@ -31,3 +31,6 @@ crawler_output.log
 
 # Application logs
 *.log
+
+# Python virtual environment
+.venv
