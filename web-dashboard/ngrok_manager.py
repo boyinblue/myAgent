@@ -29,6 +29,21 @@ _TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
 # 일회용 토큰 저장소
 active_tokens = {}
 
+
+def find_ngrok_config():
+    """Find an existing ngrok config, including pre-Snap/default locations."""
+    configured = os.getenv('NGROK_CONFIG', '').strip()
+    candidates = [
+        Path(configured).expanduser() if configured else None,
+        Path.home() / 'snap' / 'ngrok' / 'common' / '.config' / 'ngrok' / 'ngrok.yml',
+        Path.home() / '.config' / 'ngrok' / 'ngrok.yml',
+        Path(os.environ.get('APPDATA', '')) / 'ngrok' / 'ngrok.yml',
+    ]
+    for candidate in candidates:
+        if candidate and candidate.is_file():
+            return str(candidate)
+    return None
+
 def find_ngrok_exe():
     """ngrok 실행 파일 경로 찾기"""
     # 1. shutil.which로 PATH에서 찾기
@@ -116,8 +131,12 @@ class NgrokManager:
         
         # ngrok 프로세스 시작
         try:
+            command = [ngrok_exe, 'http', str(port)]
+            config_path = find_ngrok_config()
+            if config_path:
+                command.extend(['--config', config_path])
             self.process = subprocess.Popen(
-                [ngrok_exe, 'http', str(port)],
+                command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True

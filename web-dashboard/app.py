@@ -2,6 +2,8 @@
 """웹 대시보드 메인 애플리케이션"""
 
 import os
+import shutil
+import subprocess
 import sys
 import sqlite3
 import io
@@ -556,6 +558,100 @@ def api_stats():
         })
     finally:
         conn.close()
+
+
+@app.route('/api/health')
+def api_health():
+    """Return a secret-free health summary for dashboard dependencies."""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    services = []
+
+    db_path = project_root / 'archive' / 'archive_index.db'
+    try:
+        with sqlite3.connect(db_path) as conn:
+            post_count = conn.execute('SELECT COUNT(*) FROM posts').fetchone()[0]
+            integrity = conn.execute('PRAGMA quick_check').fetchone()[0]
+        db_ok = integrity == 'ok'
+        services.append({
+            'name': 'Archive DB',
+            'status': 'healthy' if db_ok else 'unhealthy',
+            'detail': f'{post_count:,} posts · quick_check: {integrity}',
+        })
+    except Exception as exc:
+        services.append({'name': 'Archive DB', 'status': 'unhealthy', 'detail': str(exc)})
+
+    github_token, repo, workflow, _ = _get_github_dispatch_settings()
+    if not github_token:
+        services.append({'name': 'GitHub Actions', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
+    else:
+        try:
+            import requests
+            url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}'
+            response = requests.get(url, headers=_github_headers(github_token), timeout=5)
+            response.raise_for_status()
+            services.append({'name': 'GitHub Actions', 'status': 'healthy', 'detail': f'{repo} · {workflow}'})
+        except Exception as exc:
+            services.append({
+                'name': 'GitHub Actions',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: API check failed',
+            })
+
+    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '').strip()
+    if not telegram_token or not telegram_chat_id:
+        services.append({'name': 'Telegram', 'status': 'not_configured', 'detail': 'bot token or chat ID not configured'})
+    else:
+        try:
+            import requests
+            response = requests.get(
+                f'https://api.telegram.org/bot{telegram_token}/getMe',
+                timeout=5,
+            )
+            response.raise_for_status()
+            body = response.json()
+            if not body.get('ok'):
+                raise RuntimeError(body.get('description', 'Telegram API returned ok=false'))
+            username = (body.get('result') or {}).get('username', 'bot')
+            services.append({'name': 'Telegram', 'status': 'healthy', 'detail': f'@{username}'})
+        except Exception as exc:
+            services.append({
+                'name': 'Telegram',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: API check failed',
+            })
+
+    ngrok_exe = shutil.which('ngrok')
+    if not ngrok_exe:
+        services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'executable not found'})
+    else:
+        config_path = ngrok_manager.find_ngrok_config()
+        if not config_path:
+            services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'config file not found'})
+        else:
+            try:
+                result = subprocess.run(
+                    [ngrok_exe, 'config', 'check', '--config', config_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=True,
+                )
+                detail = (result.stdout or 'configuration valid').strip().splitlines()[-1]
+                services.append({'name': 'ngrok', 'status': 'healthy', 'detail': detail})
+            except Exception as exc:
+                services.append({
+                    'name': 'ngrok',
+                    'status': 'unhealthy',
+                    'detail': f'{type(exc).__name__}: configuration check failed',
+                })
+
+    return jsonify({
+        'checked_at': datetime.now().isoformat(timespec='seconds'),
+        'services': services,
+    })
 
 @app.route('/api/posts')
 def api_posts():
