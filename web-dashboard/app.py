@@ -214,6 +214,10 @@ def is_admin() -> bool:
 def api_admin_login():
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
+    forwarded_https = request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+    loopback = (request.remote_addr or '') in {'127.0.0.1', '::1'}
+    if not (request.is_secure or forwarded_https or loopback):
+        return jsonify({'error': 'Admin login requires HTTPS or localhost'}), 400
     expected = os.getenv('DASHBOARD_ADMIN_PASSWORD', '')
     supplied = str((request.get_json(silent=True) or {}).get('password', ''))
     if not expected:
