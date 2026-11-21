@@ -17,15 +17,46 @@ for arg in "${@:2}"; do
   esac
 done
 
+# 동기화 제외 패턴:
+# - 기존 credentials, logs 디렉터리 및 숨김 관리 폴더
+# - DB 파일 및 임시/캐시 파일
 FILTER_RULES=(
+  "--exclude" "credentials/**"
+  "--exclude" ".credentials/**"
+  "--exclude" "logs/**"
+  "--exclude" ".logs/**"
+  "--exclude" ".db/**"
+  "--exclude" ".runtime/**"
   "--exclude" ".venv/**"
   "--exclude" "venv/**"
+  "--exclude" ".git/**"
   "--exclude" "**/__pycache__/**"
   "--exclude" "*.pyc"
-  "--exclude" ".git/**"
-  "--exclude" ".runtime/**"
+  "--exclude" "*.pyo"
   "--exclude" "*.bak.*"
-  "--exclude" ".env"
+  "--exclude" ".env*"
+  "--exclude" "*credential*.json"
+  "--exclude" "*token*.json"
+  "--exclude" "client_secret*.json"
+  "--exclude" "service_account*.json"
+  "--exclude" "*.log"
+  "--exclude" "*.jsonl"
+  "--exclude" "*.db"
+  "--exclude" "*.db-wal"
+  "--exclude" "*.db-shm"
+  "--exclude" "*.db-journal"
+  "--exclude" "*.sqlite"
+  "--exclude" "*.sqlite3"
+  "--exclude" ".DS_Store"
+  "--exclude" "Thumbs.db"
+  "--exclude" "*.swp"
+  "--exclude" "*.swo"
+  "--exclude" "*~"
+  "--exclude" "*.tmp"
+  "--exclude" "*.temp"
+  "--exclude" ".pytest_cache/**"
+  "--exclude" ".ruff_cache/**"
+  "--exclude" ".mypy_cache/**"
 )
 
 LOCK_FILE="/tmp/myagent_gdrive_sync.lock"
@@ -41,6 +72,43 @@ fi
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+apply_local_sh_permissions() {
+  local count=0
+  while IFS= read -r -d '' sh_file; do
+    if [ ! -x "$sh_file" ]; then
+      if [ -z "$DRY_RUN_FLAG" ]; then
+        chmod +x "$sh_file"
+      fi
+      count=$((count + 1))
+    fi
+  done < <(
+    find "$PROJECT_ROOT" \
+      \( -path "${PROJECT_ROOT}/.venv" -o -path "${PROJECT_ROOT}/venv" -o -path "${PROJECT_ROOT}/.git" -o -path "${PROJECT_ROOT}/.runtime" -o -path "${PROJECT_ROOT}/credentials" -o -path "${PROJECT_ROOT}/logs" -o -path "*/__pycache__" \) -prune -o \
+      -type f -name "*.sh" -print0
+  )
+
+  if [ -n "$DRY_RUN_FLAG" ]; then
+    log "[DRY-RUN] 실행 권한 대상 *.sh 파일 점검 완료 (권한 미부여 수: ${count})"
+  else
+    log "로컬 *.sh 실행 권한(chmod +x) 적용 완료 (신규 부여: ${count}개)"
+  fi
+}
+
+cleanup_gdrive_duplicates() {
+  if [ -n "$DRY_RUN_FLAG" ]; then
+    log "[DRY-RUN] Google Drive 중복 파일 정리 미리보기: ${REMOTE_TARGET}"
+    rclone dedupe "$REMOTE_TARGET" \
+      --dedupe-mode newest \
+      --dry-run \
+      -v 2>&1 | tee -a "$LOG_FILE"
+  else
+    log "Google Drive 중복 파일 정리(최신 1개 유지): ${REMOTE_TARGET}"
+    rclone dedupe "$REMOTE_TARGET" \
+      --dedupe-mode newest \
+      -v 2>&1 | tee -a "$LOG_FILE"
+  fi
 }
 
 if ! command -v rclone >/dev/null 2>&1; then
@@ -86,5 +154,11 @@ case "$MODE" in
     exit 1
     ;;
 esac
+
+# 1) Google Drive 중복 파일 정리 (최신 파일만 남김)
+cleanup_gdrive_duplicates
+
+# 2) 로컬 *.sh 파일 실행 권한 자동 부여
+apply_local_sh_permissions
 
 log "완료: mode=${MODE}"
