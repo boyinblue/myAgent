@@ -201,11 +201,11 @@ def auto_trigger_crawl_if_due() -> dict:
     except Exception as exc:
         return {'triggered': False, 'reason': 'error', 'error': str(exc)}
 
+
 def is_local_mode() -> bool:
     if os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() != '1':
         return False
 
-    # 0.0.0.0에 바인딩하더라도 인증 우회는 서버 자체 요청에만 허용합니다.
     remote_addr = (request.remote_addr or '').strip()
     return remote_addr in {'127.0.0.1', '::1'}
 
@@ -313,53 +313,157 @@ def api_admin_restart_service():
     timer.start()
     return jsonify({'success': True, 'service': service, 'message': 'Restart scheduled'})
 
+
+def _tail_text_file(path: Path, lines: int = 120) -> str:
+    if not path.exists() or not path.is_file():
+        return ''
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        all_lines = f.read().splitlines()
+    return '\n'.join(all_lines[-lines:])
+
+
+def _collect_service_logs(service: str, lines: int = 120) -> dict:
+    """서비스별 최근 동작/오류 로그를 수집합니다."""
+    normalized = (service or '').strip().lower()
+    log_dir = project_root / 'logs'
+    sources: list[dict] = []
+
+    def add_journal_unit(unit_name: str, title: str):
+        if os.name == 'nt':
+            return
+        try:
+            proc = subprocess.run(
+                ['journalctl', '--user', '-u', unit_name, '-n', str(lines), '--no-pager', '--output=short-iso'],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            content = (proc.stdout or '').strip()
+            if content:
+                sources.append({'source': title, 'content': content})
+        except Exception as exc:
+            sources.append({'source': title, 'content': f'[journalctl 조회 실패] {exc}'})
+
+    def add_log_file(file_path: Path, title: str):
+        content = _tail_text_file(file_path, lines=lines)
+        if content:
+            sources.append({'source': f'{title} ({file_path.relative_to(project_root)})', 'content': content})
+
+    if normalized == 'google_drive':
+        add_log_file(log_dir / 'gdrive_sync.log', 'Google Drive Sync Log')
+        add_log_file(log_dir / 'gdrive.log', 'Google Drive Tool Log')
+        for p in sorted(log_dir.glob('*gdrive*.log')):
+            if p.name not in {'gdrive_sync.log', 'gdrive.log'}:
+                add_log_file(p, p.name)
+        add_journal_unit('myagent-dashboard.service', 'Dashboard Service (journalctl)')
+        add_journal_unit('myagent-telegram.service', 'Telegram Service (journalctl)')
+    elif normalized == 'dashboard':
+        add_journal_unit('myagent-dashboard.service', 'Dashboard Service (journalctl)')
+        for p in sorted(log_dir.glob('*dashboard*.log')):
+            add_log_file(p, p.name)
+    elif normalized == 'telegram':
+        add_journal_unit('myagent-telegram.service', 'Telegram Service (journalctl)')
+        for p in sorted(log_dir.glob('*telegram*.log')) + sorted(log_dir.glob('*bot*.log')):
+            add_log_file(p, p.name)
+    elif normalized == 'crawler':
+        add_journal_unit('myagent-crawler.service', 'Crawler Service (journalctl)')
+        for p in sorted(log_dir.glob('*crawl*.log')):
+            add_log_file(p, p.name)
+    elif normalized == 'ngrok':
+        for p in sorted(log_dir.glob('*ngrok*.log')):
+            add_log_file(p, p.name)
+        add_journal_unit('myagent-dashboard.service', 'Dashboard Service (journalctl)')
+    elif normalized == 'archive_db':
+        for p in sorted(log_dir.glob('*db*.log')) + sorted(log_dir.glob('*archive*.log')):
+            add_log_file(p, p.name)
+        add_journal_unit('myagent-dashboard.service', 'Dashboard Service (journalctl)')
+    else:
+        return {'error': 'Unsupported service log target', 'status_code': 400}
+
+    if not sources:
+        return {
+            'service': normalized,
+            'lines': lines,
+            'logs': f'[{normalized}] 표시할 로그가 없습니다. (logs 디렉터리 또는 systemd 저널 확인 필요)',
+            'sources': [],
+        }
+
+    merged = []
+    for item in sources:
+        merged.append(f"=== {item['source']} ===\n{item['content']}")
+
+    return {
+        'service': normalized,
+        'lines': lines,
+        'logs': '\n\n'.join(merged),
+        'sources': [item['source'] for item in sources],
+    }
+
+
+@app.route('/api/admin/service-logs')
+def api_admin_service_logs():
+    if not is_authenticated() or not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
+    service = str(request.args.get('service', '')).strip().lower()
+    try:
+        lines = int(request.args.get('lines', 120))
+    except ValueError:
+        lines = 120
+    lines = max(20, min(lines, 500))
+
+    result = _collect_service_logs(service, lines=lines)
+    if 'error' in result:
+        code = result.pop('status_code', 400)
+        return jsonify(result), code
+
+    result['fetched_at'] = datetime.now().isoformat(timespec='seconds')
+    return jsonify(result)
+
+
 def validate_token(token):
     """토큰 유효성 검증 (파일 기반, 제한 횟수 사용)"""
     try:
-        # 파일에서 토큰 읽기
         if not _TOKENS_FILE.exists():
             return False
-        
+
         with open(_TOKENS_FILE, 'r') as f:
             all_tokens = json.load(f)
-        
+
         if token not in all_tokens:
             return False
-        
+
         token_info = all_tokens[token]
-        
-        # 만료 확인
+
         expires_at = datetime.fromisoformat(token_info['expires_at'])
         if datetime.now() > expires_at:
-            # 만료된 토큰 제거
             del all_tokens[token]
             with open(_TOKENS_FILE, 'w') as f:
                 json.dump(all_tokens, f)
             return False
-        
+
         used_count = int(token_info.get('used_count', 0))
         max_uses = int(token_info.get('max_uses', 1))
 
-        # 구버전 토큰(used 플래그만 존재) 하위 호환
         if 'used_count' not in token_info and 'used' in token_info:
             used_count = 1 if bool(token_info.get('used')) else 0
             max_uses = 1
 
         if used_count >= max_uses:
             return False
-        
-        # 토큰 사용 처리
+
         token_info['used_count'] = used_count + 1
         token_info['max_uses'] = max_uses
         token_info['used'] = token_info['used_count'] >= token_info['max_uses']
         all_tokens[token] = token_info
         with open(_TOKENS_FILE, 'w') as f:
             json.dump(all_tokens, f)
-        
+
         return True
     except Exception as e:
         print(f"[!] 토큰 검증 실패: {e}")
         return False
+
 
 def get_db_connection():
     """아카이브 DB 연결"""
@@ -371,7 +475,6 @@ def get_db_connection():
     return conn
 
 
-# DATE_EXPR: published_date이 없거나 'None' 문자열이면 created_at 사용
 DATE_EXPR = "date(COALESCE(NULLIF(published_date, ''), NULLIF(published_date, 'None'), created_at))"
 
 
@@ -409,7 +512,6 @@ def _build_posts_select_sql(conn):
     else:
         select_parts.append("'' AS representative_image")
 
-    # 요약 필드가 있으면 사용하고, 없으면 빈 문자열로 내려준다.
     if 'summary' in columns:
         select_parts.append('"summary"')
     else:
@@ -457,14 +559,11 @@ def _build_calendar_day_map(rows):
 
 def _fix_naver_image_url(url: str) -> str:
     """Naver 이미지 URL을 브라우저에서 로드 가능한 고해상도 URL로 변환."""
-    # 블러 파라미터 → 고해상도
     url = url.replace('type=w80_blur', 'type=w800').replace('type=w2_blur', 'type=w800')
-    # blogthumb.pstatic.net (CORS 차단됨) → mblogthumb-phinf.pstatic.net
     if 'blogthumb.pstatic.net' in url:
         url = url.replace('blogthumb.pstatic.net', 'mblogthumb-phinf.pstatic.net')
-        # type=w2 → type=w800 (blogthumb 기본 파라미터)
-        if 'type=w2' in url:
-            url = url.replace('type=w2', 'type=w800')
+    if 'type=w2' in url:
+        url = url.replace('type=w2', 'type=w800')
     return url
 
 
@@ -474,7 +573,6 @@ def _extract_first_image(value: str) -> str:
         return ''
     if value.startswith('['):
         try:
-            import json
             items = json.loads(value)
             if items and isinstance(items, list):
                 first = items[0]
@@ -485,7 +583,6 @@ def _extract_first_image(value: str) -> str:
                 return _fix_naver_image_url(url)
         except Exception:
             pass
-    # 단순 문자열인 경우에도 변환
     return _fix_naver_image_url(value)
 
 
@@ -493,7 +590,7 @@ def _normalize_relative_date(value: str) -> str:
     """'N시간 전', 'N분 전', 'N일 전' 형태의 상대 시간을 ISO datetime으로 변환"""
     if not value:
         return value
-    from datetime import datetime, timezone, timedelta
+    from datetime import timezone
     import re
     kst = timezone(timedelta(hours=9))
     now = datetime.now(kst)
@@ -530,7 +627,6 @@ def _to_post_preview(row):
     pub = row.get('published_date') or ''
     created = row.get('created_at') or ''
     img = _extract_first_image(row.get('representative_image') or '')
-    # YouTube 이미지 없으면 URL에서 추출
     if not img and row.get('platform') == 'YouTube':
         img = _get_youtube_thumbnail(row.get('url') or '')
     return {
@@ -602,6 +698,7 @@ def _refresh_tistory_thumbnail(preview):
         pass
     return preview
 
+
 @app.route('/')
 def index():
     """접속 토큰 검증"""
@@ -610,56 +707,54 @@ def index():
         return redirect(url_for('dashboard'))
 
     token = request.args.get('token')
-    
+
     if not token:
         return "⛔ 접속 토큰이 필요합니다. 텔레그램 봇에서 URL을 요청하세요.", 403
-    
+
     if not validate_token(token):
         return "⛔ 유효하지 않거나 만료된 토큰입니다.", 403
-    
-    # 세션에 인증 상태 저장
+
     session['authenticated'] = True
     session['token'] = token
-    
+
     return redirect(url_for('dashboard'))
+
 
 @app.route('/dashboard')
 def dashboard():
     """메인 대시보드"""
     if not is_authenticated():
         return redirect(url_for('index'))
-    
+
     return render_template('dashboard.html')
+
 
 @app.route('/api/stats')
 def api_stats():
     """통계 데이터 API"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     conn = get_db_connection()
     if not conn:
         return jsonify({'error': 'Database not found'}), 500
-    
+
     try:
-        # 전체 통계
         total = conn.execute('SELECT COUNT(*) as count FROM posts').fetchone()['count']
-        
-        # 플랫폼별 통계
+
         platform_stats = conn.execute('''
-            SELECT platform, COUNT(*) as count 
-            FROM posts 
-            GROUP BY platform 
+            SELECT platform, COUNT(*) as count
+            FROM posts
+            GROUP BY platform
             ORDER BY count DESC
         ''').fetchall()
-        
-        # 최근 30일 추가된 포스트 수
+
         recent = conn.execute('''
-            SELECT COUNT(*) as count 
-            FROM posts 
+            SELECT COUNT(*) as count
+            FROM posts
             WHERE created_at >= datetime('now', '-30 days')
         ''').fetchone()['count']
-        
+
         return jsonify({
             'total_posts': total,
             'recent_posts': recent,
@@ -684,6 +779,7 @@ def api_health():
         'status': 'healthy',
         'detail': f'PID {os.getpid()}',
         'restart_key': 'dashboard',
+        'log_key': 'dashboard',
     })
 
     db_path = project_root / 'archive' / 'archive_index.db'
@@ -691,31 +787,38 @@ def api_health():
         with sqlite3.connect(db_path) as conn:
             post_count = conn.execute('SELECT COUNT(*) FROM posts').fetchone()[0]
             integrity = conn.execute('PRAGMA quick_check').fetchone()[0]
-        db_ok = integrity == 'ok'
+            db_ok = integrity == 'ok'
+            services.append({
+                'name': 'Archive DB',
+                'status': 'healthy' if db_ok else 'unhealthy',
+                'detail': f'{post_count:,} posts · quick_check: {integrity}',
+                'log_key': 'archive_db',
+            })
+    except Exception as exc:
         services.append({
             'name': 'Archive DB',
-            'status': 'healthy' if db_ok else 'unhealthy',
-            'detail': f'{post_count:,} posts · quick_check: {integrity}',
+            'status': 'unhealthy',
+            'detail': str(exc),
+            'log_key': 'archive_db',
         })
-    except Exception as exc:
-        services.append({'name': 'Archive DB', 'status': 'unhealthy', 'detail': str(exc)})
 
     github_token, repo, workflow, _ = _get_github_dispatch_settings()
     if not github_token:
-        services.append({'name': 'GitHub Actions', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
-        services.append({'name': 'Actions Runner', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
+        services.append({'name': 'GitHub Actions', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured', 'log_key': 'crawler'})
+        services.append({'name': 'Actions Runner', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured', 'log_key': 'crawler'})
     else:
         try:
             import requests
             url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}'
             response = requests.get(url, headers=_github_headers(github_token), timeout=5)
             response.raise_for_status()
-            services.append({'name': 'GitHub Actions', 'status': 'healthy', 'detail': f'{repo} · {workflow}'})
+            services.append({'name': 'GitHub Actions', 'status': 'healthy', 'detail': f'{repo} · {workflow}', 'log_key': 'crawler'})
         except Exception as exc:
             services.append({
                 'name': 'GitHub Actions',
                 'status': 'unhealthy',
                 'detail': f'{type(exc).__name__}: API check failed',
+                'log_key': 'crawler',
             })
 
         try:
@@ -733,23 +836,24 @@ def api_health():
             online = [runner for runner in matches if runner.get('status') == 'online']
             if online:
                 names = ', '.join(f"{runner.get('name', 'runner')} ({'busy' if runner.get('busy') else 'idle'})" for runner in online)
-                services.append({'name': 'Actions Runner', 'status': 'healthy', 'detail': names})
+                services.append({'name': 'Actions Runner', 'status': 'healthy', 'detail': names, 'log_key': 'crawler'})
             elif matches:
                 names = ', '.join(str(runner.get('name', 'runner')) for runner in matches)
-                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': f'offline: {names}'})
+                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': f'offline: {names}', 'log_key': 'crawler'})
             else:
-                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': 'Linux ARM64 self-hosted runner not found'})
+                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': 'Linux ARM64 self-hosted runner not found', 'log_key': 'crawler'})
         except Exception as exc:
             services.append({
                 'name': 'Actions Runner',
                 'status': 'unhealthy',
                 'detail': f'{type(exc).__name__}: runner API check failed (repo admin permission may be required)',
+                'log_key': 'crawler',
             })
 
     telegram_token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
     telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '').strip()
     if not telegram_token or not telegram_chat_id:
-        services.append({'name': 'Telegram', 'status': 'not_configured', 'detail': 'bot token or chat ID not configured'})
+        services.append({'name': 'Telegram', 'status': 'not_configured', 'detail': 'bot token or chat ID not configured', 'log_key': 'telegram'})
     else:
         try:
             import requests
@@ -762,13 +866,20 @@ def api_health():
             if not body.get('ok'):
                 raise RuntimeError(body.get('description', 'Telegram API returned ok=false'))
             username = (body.get('result') or {}).get('username', 'bot')
-            services.append({'name': 'Telegram', 'status': 'healthy', 'detail': f'@{username}', 'restart_key': 'telegram'})
+            services.append({
+                'name': 'Telegram',
+                'status': 'healthy',
+                'detail': f'@{username}',
+                'restart_key': 'telegram',
+                'log_key': 'telegram',
+            })
         except Exception as exc:
             services.append({
                 'name': 'Telegram',
                 'status': 'unhealthy',
                 'detail': f'{type(exc).__name__}: API check failed',
                 'restart_key': 'telegram',
+                'log_key': 'telegram',
             })
 
     credentials_dir = project_root / 'credentials' / 'google'
@@ -779,7 +890,12 @@ def api_health():
     if not drive_token.exists():
         drive_token = project_root / 'google_oauth2_token.json'
     if not drive_credentials.exists() or not drive_token.exists():
-        services.append({'name': 'Google Drive', 'status': 'not_configured', 'detail': 'OAuth credentials or token not found'})
+        services.append({
+            'name': 'Google Drive',
+            'status': 'not_configured',
+            'detail': 'OAuth credentials or token not found',
+            'log_key': 'google_drive',
+        })
     else:
         try:
             from google.oauth2.credentials import Credentials
@@ -793,17 +909,27 @@ def api_health():
                 raise RuntimeError('OAuth token is invalid')
             drive = build('drive', 'v3', credentials=creds, cache_discovery=False)
             user = drive.about().get(fields='user(displayName,emailAddress)').execute().get('user', {})
-            services.append({'name': 'Google Drive', 'status': 'healthy', 'detail': user.get('emailAddress') or user.get('displayName') or 'connected'})
+            services.append({
+                'name': 'Google Drive',
+                'status': 'healthy',
+                'detail': user.get('emailAddress') or user.get('displayName') or 'connected',
+                'log_key': 'google_drive',
+            })
         except Exception as exc:
-            services.append({'name': 'Google Drive', 'status': 'unhealthy', 'detail': f'{type(exc).__name__}: API check failed'})
+            services.append({
+                'name': 'Google Drive',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: API check failed',
+                'log_key': 'google_drive',
+            })
 
     ngrok_exe = shutil.which('ngrok')
     if not ngrok_exe:
-        services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'executable not found'})
+        services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'executable not found', 'log_key': 'ngrok'})
     else:
         config_path = ngrok_manager.find_ngrok_config()
         if not config_path:
-            services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'config file not found'})
+            services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'config file not found', 'log_key': 'ngrok'})
         else:
             try:
                 result = subprocess.run(
@@ -814,12 +940,13 @@ def api_health():
                     check=True,
                 )
                 detail = (result.stdout or 'configuration valid').strip().splitlines()[-1]
-                services.append({'name': 'ngrok', 'status': 'healthy', 'detail': detail})
+                services.append({'name': 'ngrok', 'status': 'healthy', 'detail': detail, 'log_key': 'ngrok'})
             except Exception as exc:
                 services.append({
                     'name': 'ngrok',
                     'status': 'unhealthy',
                     'detail': f'{type(exc).__name__}: configuration check failed',
+                    'log_key': 'ngrok',
                 })
 
     return jsonify({
@@ -827,12 +954,13 @@ def api_health():
         'services': services,
     })
 
+
 @app.route('/api/posts')
 def api_posts():
     """포스트 목록 API"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 20))
     search = request.args.get('search', '').strip()
@@ -841,19 +969,16 @@ def api_posts():
     hidden_only = request.args.get('hidden_only', '0') == '1'
     if hidden_only and not is_admin():
         return jsonify({'error': 'Admin authentication required'}), 403
-    
+
     conn = get_db_connection()
     if not conn:
         return jsonify({'error': 'Database not found'}), 500
-    
+
     try:
         select_sql = _build_posts_select_sql(conn)
 
-        # 기본 쿼리
         where_clauses, params = _build_search_platform_where(search, platform)
-        # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
         where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
-        # 일반 목록은 숨긴 글을 제외하고, 숨김 보기에서는 숨긴 글만 조회
         where_clauses.append(
             "(is_hidden = 1)" if hidden_only else "(is_hidden IS NULL OR is_hidden = 0)"
         )
@@ -861,25 +986,23 @@ def api_posts():
         if published_on:
             where_clauses.append(f"{DATE_EXPR} = date(?)")
             params.append(published_on)
-        
+
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
-        
-        # 전체 개수
+
         count_sql = f'SELECT COUNT(*) as count FROM posts WHERE {where_sql}'
         total = conn.execute(count_sql, params).fetchone()['count']
-        
-        # 페이징된 결과
+
         offset = (page - 1) * per_page
         posts_sql = f'''
             SELECT {select_sql}
-            FROM posts 
+            FROM posts
             WHERE {where_sql}
             ORDER BY published_date DESC, created_at DESC
             LIMIT ? OFFSET ?
         '''
         params.extend([per_page, offset])
         posts = conn.execute(posts_sql, params).fetchall()
-        
+
         return jsonify({
             'total': total,
             'page': page,
@@ -921,7 +1044,6 @@ def api_calendar():
         where_clauses, params = _build_search_platform_where(search, platform)
         where_clauses.insert(0, f"{DATE_EXPR} >= date(?)")
         where_clauses.insert(1, f"{DATE_EXPR} < date(?)")
-        # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
         where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
         params = [month_start, next_month_start] + params
         where_sql = ' AND '.join(where_clauses)
@@ -979,7 +1101,6 @@ def api_calendar_week():
         where_clauses, params = _build_search_platform_where(search, platform)
         where_clauses.insert(0, f"{DATE_EXPR} >= date(?)")
         where_clauses.insert(1, f"{DATE_EXPR} <= date(?)")
-        # 제목이 없거나 'untitled'인 글은 제외 (완전하지 않은 데이터)
         where_clauses.append("title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')")
         params = [week_start.isoformat(), week_end.isoformat()] + params
         where_sql = ' AND '.join(where_clauses)
@@ -1051,7 +1172,7 @@ def api_discover():
         today = datetime.now().date()
         try:
             one_year_ago = today.replace(year=today.year - 1)
-        except ValueError:  # 2월 29일은 전년도 2월 28일로 대응
+        except ValueError:
             one_year_ago = today.replace(year=today.year - 1, day=28)
 
         where_clauses, base_params = _build_search_platform_where(search, platform)
@@ -1097,7 +1218,6 @@ def api_discover():
             random_params + [random_limit],
         ).fetchall()
 
-        # 1년 전 오늘 글임을 화면에 표시
         history_posts = []
         for row in history_rows:
             row_dict = dict(row)
@@ -1118,20 +1238,20 @@ def api_discover():
     finally:
         conn.close()
 
+
 @app.route('/api/trigger-crawl', methods=['POST'])
 def api_trigger_crawl():
     """크롤링 트리거 (GitHub Actions 워크플로 디스패치)"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     github_token, _, _, _ = _get_github_dispatch_settings()
     if not github_token:
         return jsonify({'error': 'GitHub token not configured'}), 500
-    
-    # 요청 본문에서 선택적 URL 파라미터 추출
+
     body = request.get_json(silent=True) or {}
     target_url = body.get('url', '').strip()
-    
+
     try:
         ok, err = _dispatch_crawl_workflow(target_url)
         if not ok:
@@ -1250,13 +1370,12 @@ def api_toggle_hide():
         return jsonify({'error': 'Database not found'}), 500
 
     try:
-        # 현재 is_hidden 상태 조회
         row = conn.execute('SELECT is_hidden FROM posts WHERE id = ?', (post_id,)).fetchone()
         if not row:
             return jsonify({'error': 'Post not found'}), 404
 
         current_hidden = row['is_hidden'] if row['is_hidden'] is not None else 0
-        new_hidden = 1 - current_hidden  # Toggle: 0 → 1, 1 → 0
+        new_hidden = 1 - current_hidden
 
         conn.execute('UPDATE posts SET is_hidden = ? WHERE id = ?', (new_hidden, post_id))
         conn.commit()
@@ -1295,16 +1414,14 @@ def api_chat():
     except Exception as exc:
         return jsonify({'error': str(exc)}), 500
 
+
 if __name__ == '__main__':
-    # 앱 시작 시 DB 마이그레이션 실행
     try:
         _archive_manager = ArchiveManager()
         print("[*] DB 마이그레이션 완료")
     except Exception as e:
         print(f"[!] DB 마이그레이션 실패: {e}")
-    
-    # 자동 크롤링 체크
+
     print(f"[*] startup auto-crawl check: {auto_trigger_crawl_if_due()}")
-    
-    # 개발 환경에서는 직접 실행
+
     app.run(host='0.0.0.0', port=5000, debug=True)
