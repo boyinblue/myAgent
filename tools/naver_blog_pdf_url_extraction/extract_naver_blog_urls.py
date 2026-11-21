@@ -101,8 +101,10 @@ def extract_urls(pdf_paths: list[Path]) -> tuple[list[ExtractedUrl], int, int]:
     urls_by_key: dict[str, ExtractedUrl] = {}
     pages_scanned = 0
     pages_with_urls = 0
+    total = len(pdf_paths)
 
-    for pdf_path in pdf_paths:
+    for idx, pdf_path in enumerate(pdf_paths, start=1):
+        print(f"[{idx}/{total}] Reading {pdf_path.name}......", flush=True)
         reader = PdfReader(str(pdf_path), strict=False)
         for page_number, page in enumerate(reader.pages, start=1):
             pages_scanned += 1
