@@ -87,6 +87,24 @@
 - 이메일 에이전트: `python email-agent/main.py`
 - 웹 대시보드: 텔레그램 봇에게 "웹 대시보드 시작" 또는 `python web-dashboard/start.py`
 
+## Gemini 소스 편집 CLI
+
+`GEMINI_API_KEY`를 루트 `.env`에 설정한 뒤 다음 명령으로 실행합니다.
+
+```bash
+python chatbot/local_gemini_chat.py
+```
+
+대화창에서 `/edit <요청>`을 입력하면 Gemini가 편집용 Python 스크립트를 생성합니다.
+스크립트는 `.runtime/gemini_generated_edit.py`에 저장되고, 프로젝트 내부 파일만 접근할 수
+있는 제한된 환경에서 실행됩니다. 실행 결과의 diff를 확인하고 `y`를 입력해야 실제 파일에
+반영됩니다. 생성된 스크립트가 파싱·검증·실행에 실패하거나 변경 사항을 만들지 못하면 오류를
+Gemini에 전달해 최대 3회까지 자동으로 다시 생성합니다.
+
+```text
+/edit chatbot/post_search.py의 검색 결과가 없을 때 안내 문구를 개선해줘
+```
+
 ## Web Dashboard
 
 포트포워딩 없이 내부망에서 웹 대시보드를 사용할 수 있습니다.

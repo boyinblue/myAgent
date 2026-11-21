@@ -4,6 +4,21 @@ import time
 from pathlib import Path
 import requests
 
+try:
+    from .gemini_code_editor import (
+        EDITOR_SYSTEM_PROMPT,
+        EditSession,
+        build_edit_prompt,
+        extract_python_script,
+    )
+except ImportError:  # python chatbot/local_gemini_chat.py 로 직접 실행할 때
+    from gemini_code_editor import (
+        EDITOR_SYSTEM_PROMPT,
+        EditSession,
+        build_edit_prompt,
+        extract_python_script,
+    )
+
 DEFAULT_MODELS = [
     "gemini-flash-lite-latest",
     "gemini-3.1-flash-lite-preview",
@@ -11,6 +26,7 @@ DEFAULT_MODELS = [
     "gemini-3.8-flash",
 ]
 SYSTEM_PROMPT = "간결하고 정확하게 한국어로 답변하세요."
+MAX_EDIT_ATTEMPTS = 3
 
 
 def load_dotenv_if_exists(env_path: Path) -> None:
@@ -97,7 +113,10 @@ def main() -> None:
     model = load_gemini_model(project_root / "config.json")
     history: list[dict] = []
 
-    print(f"Gemini CLI 시작 (model={model}). 종료: exit / quit, 대화 초기화: clear")
+    print(
+        f"Gemini CLI 시작 (model={model}). 종료: exit / quit, 대화 초기화: clear\n"
+        "소스 편집: /edit <요청> (생성 스크립트와 diff 확인 후 반영)"
+    )
 
     while True:
         try:
@@ -115,6 +134,73 @@ def main() -> None:
         if cmd == "clear":
             history.clear()
             print("대화 이력을 초기화했습니다.")
+            continue
+
+        if user_input.startswith("/edit "):
+            edit_request = user_input[6:].strip()
+            if not edit_request:
+                print("사용법: /edit <편집 요청>")
+                continue
+            try:
+                prompt = build_edit_prompt(project_root, edit_request)
+                edit_contents = [{"role": "user", "parts": [{"text": prompt}]}]
+                session = None
+                diff = ""
+
+                for attempt in range(1, MAX_EDIT_ATTEMPTS + 1):
+                    reply = call_gemini(edit_contents, EDITOR_SYSTEM_PROMPT, model)
+                    try:
+                        script = extract_python_script(reply)
+                        script_path = project_root / ".runtime" / "gemini_generated_edit.py"
+                        script_path.parent.mkdir(parents=True, exist_ok=True)
+                        script_path.write_text(script + "\n", encoding="utf-8")
+                        print(
+                            f"\n[Gemini 생성 스크립트 {attempt}/{MAX_EDIT_ATTEMPTS}]\n"
+                            f"{script}\n[저장 위치] {script_path}"
+                        )
+
+                        candidate = EditSession(project_root)
+                        candidate.run(script)
+                        candidate_diff = candidate.diff()
+                        if not candidate_diff:
+                            raise ValueError("스크립트를 실행했지만 변경 사항이 없습니다.")
+                        session = candidate
+                        diff = candidate_diff
+                        break
+                    except Exception as edit_exc:
+                        if attempt >= MAX_EDIT_ATTEMPTS:
+                            raise RuntimeError(
+                                f"{MAX_EDIT_ATTEMPTS}회 수정 후에도 실패했습니다: {edit_exc}"
+                            ) from edit_exc
+                        print(
+                            f"[편집 스크립트 오류] {edit_exc}\n"
+                            "오류 내용을 Gemini에 전달해 스크립트를 다시 생성합니다."
+                        )
+                        edit_contents.extend([
+                            {"role": "model", "parts": [{"text": reply}]},
+                            {
+                                "role": "user",
+                                "parts": [{
+                                    "text": (
+                                        "방금 생성한 스크립트 실행에 실패했습니다. "
+                                        "아래 오류를 해결한 전체 Python 스크립트를 다시 작성하세요.\n\n"
+                                        f"오류: {type(edit_exc).__name__}: {edit_exc}"
+                                    )
+                                }],
+                            },
+                        ])
+
+                if session is None:
+                    raise RuntimeError("유효한 편집 스크립트를 생성하지 못했습니다.")
+                print(f"\n[예상 변경 사항]\n{diff}")
+                answer = input("\n이 변경을 적용할까요? [y/N] ").strip().lower()
+                if answer not in {"y", "yes"}:
+                    print("변경을 취소했습니다.")
+                    continue
+                session.apply()
+                print(f"{len(session.pending)}개 파일의 변경을 적용했습니다.")
+            except Exception as exc:
+                print(f"[편집 오류] {exc}")
             continue
 
         turn = {"role": "user", "parts": [{"text": user_input}]}
