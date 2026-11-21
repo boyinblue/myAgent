@@ -30,8 +30,11 @@ def _load_env_file_fallback(env_file):
 
 
 def load_environment():
-    """환경 변수를 로드합니다 (.env 파일에서, 또는 환경변수 직접 사용)."""
-    env_file = Path(__file__).parent.parent / ".env"
+    """루트 .env를 우선 로드하고, 기존 content-crawler/.env를 호환합니다."""
+    project_root = Path(__file__).resolve().parents[2]
+    root_env = project_root / ".env"
+    legacy_env = Path(__file__).resolve().parents[1] / ".env"
+    env_file = root_env if root_env.exists() else legacy_env
     
     if not env_file.exists():
         # .env 파일이 없으면 환경변수만 사용 (GitHub Actions 등)

@@ -86,6 +86,101 @@
             opacity: 0.9;
             font-size: 14px;
         }
+
+        .primary-tabs {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            padding: 14px 20px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .primary-tab {
+            background: transparent;
+            color: #475569;
+            border: 1px solid transparent;
+        }
+
+        .primary-tab.active {
+            color: #fff;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .tab-heading {
+            padding: 24px 30px 4px;
+            color: #1f2937;
+        }
+
+        .tab-heading p {
+            margin-top: 6px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .health-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 30px;
+        }
+
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            padding: 0 30px 30px;
+        }
+
+        .health-card {
+            padding: 18px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        .health-card h3 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 15px;
+            margin-bottom: 9px;
+        }
+
+        .health-status {
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .health-status.healthy { background: #dcfce7; color: #166534; }
+        .health-status.unhealthy { background: #fee2e2; color: #991b1b; }
+        .health-status.not_configured { background: #fef3c7; color: #92400e; }
+
+        .health-detail {
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .health-restart {
+            margin-top: 14px;
+            padding: 7px 11px;
+            font-size: 12px;
+            background: #334155;
+        }
         
         .stats {
             display: grid;
@@ -717,6 +812,10 @@
         }
 
         @media (max-width: 768px) {
+            .primary-tabs {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
             .brand-title {
                 align-items: flex-start;
             }
@@ -767,52 +866,98 @@
             <p>콘텐츠 크롤링 관리 및 통계</p>
         </header>
         
-        <div class="stats-panel" id="statsPanel" style="display:none;">
-            <div class="stats">
-                <div class="stat-card">
-                    <h3>전체 포스트</h3>
-                    <div class="value" id="totalPosts">-</div>
+        <nav class="primary-tabs" aria-label="대시보드 메뉴">
+            <button class="primary-tab active" data-tab="contents" onclick="switchTab('contents')">Contents</button>
+            <button class="primary-tab" data-tab="crawling" onclick="switchTab('crawling')">Crawling</button>
+            <button class="primary-tab" data-tab="statistics" onclick="switchTab('statistics')">Statistics</button>
+            <button class="primary-tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
+        </nav>
+
+        <section class="tab-panel active" id="tab-contents">
+            <div class="controls">
+                <div class="view-toggle">
+                    <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
+                    <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
+                    <button id="hiddenPostsToggleBtn" onclick="toggleHiddenPosts()">🙈 숨김 글 보기</button>
                 </div>
-                <div class="stat-card">
-                    <h3>최근 30일</h3>
-                    <div class="value" id="recentPosts">-</div>
+                <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
+                <select id="platformFilter">
+                    <option value="">전체 플랫폼</option>
+                </select>
+                <button onclick="searchPosts()">🔍 검색</button>
+            </div>
+
+            <div class="calendar-panel" id="calendarPanel" style="display:none;">
+                <div class="calendar-header">
+                    <div class="calendar-title" id="calendarTitle">-</div>
+                    <div class="calendar-nav">
+                        <div class="calendar-range-toggle">
+                            <button id="monthRangeBtn" class="active" onclick="switchCalendarRange('month')">월간</button>
+                            <button id="weekRangeBtn" onclick="switchCalendarRange('week')">주간</button>
+                        </div>
+                        <button onclick="moveCalendar(-1)">← 이전</button>
+                        <button onclick="goToCurrentPeriod()">오늘</button>
+                        <button onclick="moveCalendar(1)">다음 →</button>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <h3>플랫폼 수</h3>
-                    <div class="value" id="platformCount">-</div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+            </div>
+
+            <div class="posts-list" id="postsList">
+                <div class="loading">데이터를 불러오는 중...</div>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </section>
+
+        <section class="tab-panel" id="tab-crawling">
+            <div class="tab-heading">
+                <h2>Crawling</h2>
+                <p>콘텐츠 수집 실행과 GitHub Actions 진행 상태를 확인합니다.</p>
+            </div>
+            <div class="controls">
+                <div id="crawlStatusBanner" class="status-banner">
+                    <span id="crawlStatusText">크롤링 상태를 확인하는 중...</span>
+                    <a id="crawlStatusLink" href="#" target="_blank" rel="noopener" style="display:none;">실행 보기</a>
+                </div>
+                <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
+                <div id="crawlProgressPanel" class="crawl-progress-panel">
+                    <div class="crawl-progress-title">
+                        <span id="crawlProgressTitle">크롤링 진행 상황</span>
+                        <button type="button" class="crawl-progress-toggle" id="crawlProgressToggle" onclick="toggleCrawlProgress()">접기</button>
+                    </div>
+                    <div class="crawl-progress-log" id="crawlProgressLog">아직 실행 이력이 없습니다.</div>
                 </div>
             </div>
-            
-            <div class="chart-container">
-                <canvas id="platformChart"></canvas>
+        </section>
+
+        <section class="tab-panel" id="tab-statistics">
+            <div class="tab-heading">
+                <h2>Statistics</h2>
+                <p>아카이브 규모와 플랫폼별 콘텐츠 분포입니다.</p>
             </div>
-        </div>
-        
-        <div class="controls">
-            <div id="crawlStatusBanner" class="status-banner">
-                <span id="crawlStatusText">크롤링 상태를 확인하는 중...</span>
-                <a id="crawlStatusLink" href="#" target="_blank" style="display:none;">실행 보기</a>
-            </div>
-            <div class="view-toggle">
-                <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
-                <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
-                <button id="statsToggleBtn" onclick="toggleStatsPanel()">📊 통계 보기</button>
-                <button id="hiddenPostsToggleBtn" onclick="toggleHiddenPosts()">🙈 숨김 글 보기</button>
-            </div>
-            <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
-            <select id="platformFilter">
-                <option value="">전체 플랫폼</option>
-            </select>
-            <button onclick="searchPosts()">🔍 검색</button>
-            <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
-            <div id="crawlProgressPanel" class="crawl-progress-panel">
-                <div class="crawl-progress-title">
-                    <span id="crawlProgressTitle">크롤링 진행 상황</span>
-                    <button type="button" class="crawl-progress-toggle" id="crawlProgressToggle" onclick="toggleCrawlProgress()">접기</button>
+            <div class="stats-panel" id="statsPanel">
+                <div class="stats">
+                    <div class="stat-card"><h3>전체 포스트</h3><div class="value" id="totalPosts">-</div></div>
+                    <div class="stat-card"><h3>최근 30일</h3><div class="value" id="recentPosts">-</div></div>
+                    <div class="stat-card"><h3>플랫폼 수</h3><div class="value" id="platformCount">-</div></div>
                 </div>
-                <div class="crawl-progress-log" id="crawlProgressLog">아직 실행 이력이 없습니다.</div>
+                <div class="chart-container"><canvas id="platformChart"></canvas></div>
             </div>
-        </div>
+        </section>
+
+        <section class="tab-panel" id="tab-settings">
+            <div class="tab-heading">
+                <h2>Settings</h2>
+                <p>연결된 서비스와 로컬 데이터 저장소의 상태를 확인합니다.</p>
+            </div>
+            <div class="health-toolbar">
+                <span id="healthCheckedAt">아직 검사하지 않았습니다.</span>
+                <button onclick="loadHealth()">Health Check</button>
+            </div>
+            <div class="health-grid" id="healthGrid">
+                <div class="loading">Settings 탭을 열면 상태를 검사합니다.</div>
+            </div>
+        </section>
 
         <!-- 크롤링 모달 -->
         <div id="crawlModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
@@ -828,56 +973,20 @@
             </div>
         </div>
 
-        <div class="calendar-panel" id="calendarPanel" style="display:none;">
-            <div class="calendar-header">
-                <div class="calendar-title" id="calendarTitle">-</div>
-                <div class="calendar-nav">
-                    <div class="calendar-range-toggle">
-                        <button id="monthRangeBtn" class="active" onclick="switchCalendarRange('month')">월간</button>
-                        <button id="weekRangeBtn" onclick="switchCalendarRange('week')">주간</button>
-                    </div>
-                    <button onclick="moveCalendar(-1)">← 이전</button>
-                    <button onclick="goToCurrentPeriod()">오늘</button>
-                    <button onclick="moveCalendar(1)">다음 →</button>
+        <div id="adminLoginModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.58); z-index:1100; align-items:center; justify-content:center;">
+            <form id="adminLoginForm" style="background:#fff; border-radius:12px; padding:28px; width:420px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+                <h3 style="margin:0 0 10px;">관리자 로그인</h3>
+                <p style="margin:0 0 16px; color:#64748b; font-size:13px;">Settings와 숨김 콘텐츠에 접근하려면 관리자 비밀번호가 필요합니다.</p>
+                <input type="password" id="adminPasswordInput" autocomplete="current-password" placeholder="관리자 비밀번호"
+                    style="width:100%; padding:11px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px;">
+                <div id="adminLoginError" role="alert" style="display:none; margin-top:10px; color:#b91c1c; font-size:13px;"></div>
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:18px;">
+                    <button type="button" onclick="closeAdminLogin(false)" style="background:#e2e8f0; color:#334155;">취소</button>
+                    <button type="submit" id="adminLoginSubmit">로그인</button>
                 </div>
-            </div>
-            <div class="calendar-grid" id="calendarGrid"></div>
+            </form>
         </div>
 
-        <section class="discover-home" id="discoverPanel">
-            <div class="discover-panel">
-                <div class="discover-card">
-                    <h4>🕰 1년 전 오늘</h4>
-                    <ul class="discover-list" id="todayHistoryList">
-                        <li>불러오는 중...</li>
-                    </ul>
-                </div>
-                <div class="discover-card">
-                    <h4>🎲 오늘의 랜덤 글 3개</h4>
-                    <ul class="discover-list" id="randomList">
-                        <li>불러오는 중...</li>
-                    </ul>
-                </div>
-            </div>
-        </section>
-        
-        <div class="posts-list" id="postsList">
-            <div class="loading">데이터를 불러오는 중...</div>
-        </div>
-
-        <div class="pagination" id="pagination"></div>
-
-        <div class="chatbot-panel">
-            <div class="chatbot-header">AI 챗봇</div>
-            <div class="chatbot-messages" id="chatbotMessages">
-                <div class="chat-bubble bot">안녕하세요. 아카이브 관련 질문을 입력해 주세요.</div>
-            </div>
-            <div class="chatbot-input-row">
-                <input type="text" id="chatbotInput" placeholder="예: 도움말, /search 와인, 대시보드 상태 알려줘">
-                <button id="chatbotSendBtn" onclick="sendChatMessage()">전송</button>
-            </div>
-        </div>
-        
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
@@ -886,7 +995,6 @@
         let platformChart = null;
         let currentView = 'list';
         let hiddenPostsMode = false;
-        let statsVisible = false;
         let selectedDate = '';
         const today = new Date();
         let calendarYear = today.getFullYear();
@@ -895,6 +1003,145 @@
         let weekReferenceDate = formatYmd(today);
         let crawlStatusTimer = null;
         let crawlProgressTimer = null;
+        let adminLoginResolver = null;
+
+        async function readApiJson(response) {
+            const text = await response.text();
+            try {
+                return text ? JSON.parse(text) : {};
+            } catch (e) {
+                throw new Error(`서버가 JSON 대신 HTML을 반환했습니다 (HTTP ${response.status}). 대시보드를 재시작하고 새로고침하세요.`);
+            }
+        }
+
+        function switchTab(tabName) {
+            if (tabName === 'settings' && !window.dashboardAdminAuthenticated) {
+                adminLogin().then((ok) => { if (ok) switchTab('settings'); });
+                return;
+            }
+            document.querySelectorAll('.primary-tab').forEach((button) => {
+                button.classList.toggle('active', button.dataset.tab === tabName);
+            });
+            document.querySelectorAll('.tab-panel').forEach((panel) => {
+                panel.classList.toggle('active', panel.id === `tab-${tabName}`);
+            });
+
+            if (tabName === 'statistics') {
+                loadStats();
+            } else if (tabName === 'settings') {
+                loadHealth();
+            } else if (tabName === 'crawling') {
+                loadCrawlStatus();
+                loadCrawlProgress();
+            }
+        }
+
+        function adminLogin() {
+            const modal = document.getElementById('adminLoginModal');
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminLoginError');
+            error.style.display = 'none';
+            error.textContent = '';
+            input.value = '';
+            modal.style.display = 'flex';
+            setTimeout(() => input.focus(), 50);
+            return new Promise((resolve) => { adminLoginResolver = resolve; });
+        }
+
+        function closeAdminLogin(result) {
+            document.getElementById('adminLoginModal').style.display = 'none';
+            document.getElementById('adminPasswordInput').value = '';
+            if (adminLoginResolver) adminLoginResolver(Boolean(result));
+            adminLoginResolver = null;
+        }
+
+        document.getElementById('adminLoginForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminLoginError');
+            const submit = document.getElementById('adminLoginSubmit');
+            error.style.display = 'none';
+            submit.disabled = true;
+            try {
+                const resp = await fetch('/api/admin/login', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: input.value})
+                });
+                const data = await readApiJson(resp);
+                if (!resp.ok) {
+                    if (resp.status === 429) {
+                        const minutes = Math.max(1, Math.ceil(Number(data.retry_after || 0) / 60));
+                        throw new Error(`로그인 시도가 잠겼습니다. 약 ${minutes}분 후 다시 시도하세요.`);
+                    }
+                    if (resp.status === 401 && Number.isFinite(Number(data.remaining_attempts))) {
+                        throw new Error(`비밀번호가 올바르지 않습니다. 남은 시도: ${data.remaining_attempts}회`);
+                    }
+                    throw new Error(data.error || `HTTP ${resp.status}`);
+                }
+                window.dashboardAdminAuthenticated = true;
+                closeAdminLogin(true);
+            } catch (e) {
+                error.textContent = e.message === 'Admin login requires HTTPS or localhost'
+                    ? '관리자 로그인은 localhost 또는 ngrok HTTPS 주소에서만 가능합니다.'
+                    : e.message;
+                error.style.display = 'block';
+                input.select();
+            } finally {
+                submit.disabled = false;
+            }
+        });
+
+        async function loadHealth() {
+            const grid = document.getElementById('healthGrid');
+            const checkedAt = document.getElementById('healthCheckedAt');
+            grid.innerHTML = '<div class="loading">서비스 상태를 검사하는 중...</div>';
+
+            try {
+                const resp = await fetch('/api/health');
+                const data = await resp.json();
+                if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+
+                const labels = {
+                    healthy: 'Healthy',
+                    unhealthy: 'Unhealthy',
+                    not_configured: 'Not configured'
+                };
+                grid.innerHTML = (data.services || []).map((service) => `
+                    <article class="health-card">
+                        <h3>
+                            ${escapeHtml(service.name)}
+                            <span class="health-status ${escapeHtml(service.status)}">
+                                ${escapeHtml(labels[service.status] || service.status)}
+                            </span>
+                        </h3>
+                        <div class="health-detail">${escapeHtml(service.detail || '')}</div>
+                        ${service.restart_key ? `<button class="health-restart" onclick="restartService('${escapeHtml(service.restart_key)}', this)">서비스 재시작</button>` : ''}
+                    </article>
+                `).join('') || '<div class="no-results">검사할 서비스가 없습니다.</div>';
+                checkedAt.textContent = `마지막 검사: ${formatDateTime(data.checked_at)}`;
+            } catch (e) {
+                grid.innerHTML = `<div class="no-results">Health Check 실패: ${escapeHtml(e.message)}</div>`;
+                checkedAt.textContent = '검사 실패';
+            }
+        }
+
+        async function restartService(service, button) {
+            if (!confirm(`${service} 서비스를 재시작하시겠습니까?`)) return;
+            button.disabled = true;
+            try {
+                const resp = await fetch('/api/admin/restart-service', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({service})
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                alert('재시작을 예약했습니다. 잠시 후 상태를 다시 확인하세요.');
+                if (service !== 'dashboard') setTimeout(loadHealth, 5000);
+            } catch (e) {
+                alert(`재시작 실패: ${e.message}`);
+                button.disabled = false;
+            }
+        }
         
         // 통계 로드
         async function loadStats() {
@@ -908,12 +1155,15 @@
                 
                 // 플랫폼 필터 채우기
                 const platformFilter = document.getElementById('platformFilter');
+                const selectedPlatform = platformFilter.value;
+                platformFilter.innerHTML = '<option value="">전체 플랫폼</option>';
                 data.platform_stats.forEach(stat => {
                     const option = document.createElement('option');
                     option.value = stat.platform;
                     option.textContent = `${stat.platform} (${stat.count})`;
                     platformFilter.appendChild(option);
                 });
+                platformFilter.value = selectedPlatform;
                 
                 // 차트 그리기
                 drawChart(data.platform_stats);
@@ -1005,17 +1255,14 @@
 
             if (isCalendar) {
                 loadCalendar();
-                loadDiscover();
             }
         }
 
-        function toggleStatsPanel() {
-            statsVisible = !statsVisible;
-            document.getElementById('statsPanel').style.display = statsVisible ? 'block' : 'none';
-            document.getElementById('statsToggleBtn').textContent = statsVisible ? '📊 통계 닫기' : '📊 통계 보기';
-        }
-
         function toggleHiddenPosts() {
+            if (!window.dashboardAdminAuthenticated) {
+                adminLogin().then((ok) => { if (ok) toggleHiddenPosts(); });
+                return;
+            }
             hiddenPostsMode = !hiddenPostsMode;
             selectedDate = '';
             document.getElementById('hiddenPostsToggleBtn').textContent = hiddenPostsMode
@@ -1471,7 +1718,6 @@
         function searchPosts() {
             if (currentView === 'calendar') {
                 loadCalendar();
-                loadDiscover();
                 return;
             }
             loadPosts(1);
@@ -1636,6 +1882,12 @@
             const d = new Date(dateStr);
             return d.toLocaleDateString('ko-KR');
         }
+
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleString('ko-KR');
+        }
         
         function truncate(text, length) {
             if (!text) return '';
@@ -1656,16 +1908,10 @@
             }
         });
 
-        document.getElementById('chatbotInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendChatMessage();
-            }
-        });
-        
         // 초기 로드
         loadStats();
-        loadDiscover();
         setCrawlProgressCollapsed(localStorage.getItem('crawlProgressCollapsed') === 'true', false);
+        switchTab('contents');
         switchView('list');
         loadPosts(1);
         loadCrawlStatus();

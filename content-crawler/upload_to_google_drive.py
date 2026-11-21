@@ -22,8 +22,8 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 
 def get_gdrive_service():
     """OAuth2 Desktop Credentials로 Google Drive API 인증"""
-    CREDENTIAL_FILE = os.path.join('..', 'google_oauth2_credentials.json')
-    TOKEN_FILE = os.path.join('..', 'google_oauth2_upload_token.json')
+    CREDENTIAL_FILE = os.path.join('..', 'credentials', 'google', 'google_oauth2_credentials.json')
+    TOKEN_FILE = os.path.join('..', 'credentials', 'google', 'google_oauth2_upload_token.json')
     
     if not os.path.exists(CREDENTIAL_FILE):
         print("❌ google_oauth2_credentials.json 파일을 찾을 수 없습니다.")

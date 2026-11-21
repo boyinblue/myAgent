@@ -2,9 +2,14 @@
 """웹 대시보드 메인 애플리케이션"""
 
 import os
+import shutil
+import subprocess
 import sys
 import sqlite3
 import io
+import hmac
+import threading
+import time
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from pathlib import Path
@@ -37,6 +42,12 @@ app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(32).hex())
 _thumbnail_refresh_cache = {}
+_admin_login_failures: dict[str, list[float]] = {}
+_admin_login_locked_until: dict[str, float] = {}
+_admin_login_lock = threading.Lock()
+ADMIN_LOGIN_MAX_FAILURES = 5
+ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
+ADMIN_LOGIN_LOCK_SECONDS = 30 * 60
 
 # 토큰 저장 파일
 _TOKENS_FILE = Path(__file__).parent / '.access_tokens.json'
@@ -191,11 +202,116 @@ def auto_trigger_crawl_if_due() -> dict:
         return {'triggered': False, 'reason': 'error', 'error': str(exc)}
 
 def is_local_mode() -> bool:
-    return (os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() == '1')
+    if os.getenv('DASHBOARD_LOCAL_MODE', '0').strip() != '1':
+        return False
+
+    # 0.0.0.0에 바인딩하더라도 인증 우회는 서버 자체 요청에만 허용합니다.
+    remote_addr = (request.remote_addr or '').strip()
+    return remote_addr in {'127.0.0.1', '::1'}
 
 
 def is_authenticated() -> bool:
     return is_local_mode() or bool(session.get('authenticated'))
+
+
+def is_admin() -> bool:
+    return bool(session.get('admin_authenticated'))
+
+
+@app.route('/api/admin/login', methods=['POST'])
+def api_admin_login():
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+    forwarded_https = request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+    loopback = (request.remote_addr or '') in {'127.0.0.1', '::1'}
+    if not (request.is_secure or forwarded_https or loopback):
+        return jsonify({'error': 'Admin login requires HTTPS or localhost'}), 400
+    expected = os.getenv('DASHBOARD_ADMIN_PASSWORD', '')
+    supplied = str((request.get_json(silent=True) or {}).get('password', ''))
+    client_ip = (request.remote_addr or 'unknown').strip()
+    now = time.time()
+    with _admin_login_lock:
+        locked_until = _admin_login_locked_until.get(client_ip, 0)
+        if locked_until > now:
+            retry_after = max(1, int(locked_until - now))
+            response = jsonify({'error': 'Too many failed attempts', 'retry_after': retry_after})
+            response.status_code = 429
+            response.headers['Retry-After'] = str(retry_after)
+            return response
+        _admin_login_locked_until.pop(client_ip, None)
+    if not expected:
+        return jsonify({'error': 'Admin password not configured'}), 503
+    if not hmac.compare_digest(supplied, expected):
+        with _admin_login_lock:
+            failures = [stamp for stamp in _admin_login_failures.get(client_ip, []) if now - stamp < ADMIN_LOGIN_WINDOW_SECONDS]
+            failures.append(now)
+            _admin_login_failures[client_ip] = failures
+            remaining = max(0, ADMIN_LOGIN_MAX_FAILURES - len(failures))
+            if len(failures) >= ADMIN_LOGIN_MAX_FAILURES:
+                _admin_login_locked_until[client_ip] = now + ADMIN_LOGIN_LOCK_SECONDS
+                _admin_login_failures.pop(client_ip, None)
+                response = jsonify({'error': 'Too many failed attempts', 'retry_after': ADMIN_LOGIN_LOCK_SECONDS})
+                response.status_code = 429
+                response.headers['Retry-After'] = str(ADMIN_LOGIN_LOCK_SECONDS)
+                return response
+        return jsonify({'error': 'Invalid admin password', 'remaining_attempts': remaining}), 401
+    with _admin_login_lock:
+        _admin_login_failures.pop(client_ip, None)
+        _admin_login_locked_until.pop(client_ip, None)
+    session['admin_authenticated'] = True
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/status')
+def api_admin_status():
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+    return jsonify({'authenticated': is_admin(), 'configured': bool(os.getenv('DASHBOARD_ADMIN_PASSWORD'))})
+
+
+@app.route('/api/admin/logout', methods=['POST'])
+def api_admin_logout():
+    session.pop('admin_authenticated', None)
+    return jsonify({'success': True})
+
+
+def _service_restart_command(service: str) -> list[str] | None:
+    if os.name == 'nt':
+        task_names = {
+            'telegram': 'myAgent_TelegramBot',
+            'dashboard': 'myAgent_WebDashboard',
+            'crawler': 'myAgent_Crawler',
+        }
+        task = task_names.get(service)
+        return ['schtasks', '/Run', '/TN', task] if task else None
+    units = {
+        'telegram': ('restart', 'myagent-telegram.service'),
+        'dashboard': ('restart', 'myagent-dashboard.service'),
+        'crawler': ('start', 'myagent-crawler.service'),
+    }
+    action_unit = units.get(service)
+    return ['systemctl', '--user', *action_unit] if action_unit else None
+
+
+@app.route('/api/admin/restart-service', methods=['POST'])
+def api_admin_restart_service():
+    if not is_authenticated() or not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
+    service = str((request.get_json(silent=True) or {}).get('service', '')).strip().lower()
+    command = _service_restart_command(service)
+    if not command:
+        return jsonify({'error': 'Unsupported service'}), 400
+
+    def restart_later():
+        try:
+            subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+        except Exception:
+            app.logger.exception('Service restart failed: %s', service)
+
+    timer = threading.Timer(1.0, restart_later)
+    timer.daemon = True
+    timer.start()
+    return jsonify({'success': True, 'service': service, 'message': 'Restart scheduled'})
 
 def validate_token(token):
     """토큰 유효성 검증 (파일 기반, 제한 횟수 사용)"""
@@ -552,6 +668,165 @@ def api_stats():
     finally:
         conn.close()
 
+
+@app.route('/api/health')
+def api_health():
+    """Return a secret-free health summary for dashboard dependencies."""
+    if not is_authenticated():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
+
+    services = []
+
+    services.append({
+        'name': 'Dashboard Runtime',
+        'status': 'healthy',
+        'detail': f'PID {os.getpid()}',
+        'restart_key': 'dashboard',
+    })
+
+    db_path = project_root / 'archive' / 'archive_index.db'
+    try:
+        with sqlite3.connect(db_path) as conn:
+            post_count = conn.execute('SELECT COUNT(*) FROM posts').fetchone()[0]
+            integrity = conn.execute('PRAGMA quick_check').fetchone()[0]
+        db_ok = integrity == 'ok'
+        services.append({
+            'name': 'Archive DB',
+            'status': 'healthy' if db_ok else 'unhealthy',
+            'detail': f'{post_count:,} posts · quick_check: {integrity}',
+        })
+    except Exception as exc:
+        services.append({'name': 'Archive DB', 'status': 'unhealthy', 'detail': str(exc)})
+
+    github_token, repo, workflow, _ = _get_github_dispatch_settings()
+    if not github_token:
+        services.append({'name': 'GitHub Actions', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
+        services.append({'name': 'Actions Runner', 'status': 'not_configured', 'detail': 'GITHUB_TOKEN not configured'})
+    else:
+        try:
+            import requests
+            url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow}'
+            response = requests.get(url, headers=_github_headers(github_token), timeout=5)
+            response.raise_for_status()
+            services.append({'name': 'GitHub Actions', 'status': 'healthy', 'detail': f'{repo} · {workflow}'})
+        except Exception as exc:
+            services.append({
+                'name': 'GitHub Actions',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: API check failed',
+            })
+
+        try:
+            import requests
+            runners_url = f'https://api.github.com/repos/{repo}/actions/runners?per_page=100'
+            response = requests.get(runners_url, headers=_github_headers(github_token), timeout=5)
+            response.raise_for_status()
+            runners = response.json().get('runners', [])
+            expected_labels = {'self-hosted', 'linux', 'arm64'}
+            matches = []
+            for runner in runners:
+                labels = {str(item.get('name', '')).lower() for item in runner.get('labels', [])}
+                if expected_labels.issubset(labels):
+                    matches.append(runner)
+            online = [runner for runner in matches if runner.get('status') == 'online']
+            if online:
+                names = ', '.join(f"{runner.get('name', 'runner')} ({'busy' if runner.get('busy') else 'idle'})" for runner in online)
+                services.append({'name': 'Actions Runner', 'status': 'healthy', 'detail': names})
+            elif matches:
+                names = ', '.join(str(runner.get('name', 'runner')) for runner in matches)
+                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': f'offline: {names}'})
+            else:
+                services.append({'name': 'Actions Runner', 'status': 'unhealthy', 'detail': 'Linux ARM64 self-hosted runner not found'})
+        except Exception as exc:
+            services.append({
+                'name': 'Actions Runner',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: runner API check failed (repo admin permission may be required)',
+            })
+
+    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '').strip()
+    if not telegram_token or not telegram_chat_id:
+        services.append({'name': 'Telegram', 'status': 'not_configured', 'detail': 'bot token or chat ID not configured'})
+    else:
+        try:
+            import requests
+            response = requests.get(
+                f'https://api.telegram.org/bot{telegram_token}/getMe',
+                timeout=5,
+            )
+            response.raise_for_status()
+            body = response.json()
+            if not body.get('ok'):
+                raise RuntimeError(body.get('description', 'Telegram API returned ok=false'))
+            username = (body.get('result') or {}).get('username', 'bot')
+            services.append({'name': 'Telegram', 'status': 'healthy', 'detail': f'@{username}', 'restart_key': 'telegram'})
+        except Exception as exc:
+            services.append({
+                'name': 'Telegram',
+                'status': 'unhealthy',
+                'detail': f'{type(exc).__name__}: API check failed',
+                'restart_key': 'telegram',
+            })
+
+    credentials_dir = project_root / 'credentials' / 'google'
+    drive_credentials = credentials_dir / 'google_oauth2_credentials.json'
+    drive_token = credentials_dir / 'google_oauth2_token.json'
+    if not drive_credentials.exists():
+        drive_credentials = project_root / 'google_oauth2_credentials.json'
+    if not drive_token.exists():
+        drive_token = project_root / 'google_oauth2_token.json'
+    if not drive_credentials.exists() or not drive_token.exists():
+        services.append({'name': 'Google Drive', 'status': 'not_configured', 'detail': 'OAuth credentials or token not found'})
+    else:
+        try:
+            from google.oauth2.credentials import Credentials
+            from google.auth.transport.requests import Request
+            from googleapiclient.discovery import build
+            scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.readonly']
+            creds = Credentials.from_authorized_user_file(str(drive_token), scopes)
+            if not creds.valid and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            if not creds.valid:
+                raise RuntimeError('OAuth token is invalid')
+            drive = build('drive', 'v3', credentials=creds, cache_discovery=False)
+            user = drive.about().get(fields='user(displayName,emailAddress)').execute().get('user', {})
+            services.append({'name': 'Google Drive', 'status': 'healthy', 'detail': user.get('emailAddress') or user.get('displayName') or 'connected'})
+        except Exception as exc:
+            services.append({'name': 'Google Drive', 'status': 'unhealthy', 'detail': f'{type(exc).__name__}: API check failed'})
+
+    ngrok_exe = shutil.which('ngrok')
+    if not ngrok_exe:
+        services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'executable not found'})
+    else:
+        config_path = ngrok_manager.find_ngrok_config()
+        if not config_path:
+            services.append({'name': 'ngrok', 'status': 'not_configured', 'detail': 'config file not found'})
+        else:
+            try:
+                result = subprocess.run(
+                    [ngrok_exe, 'config', 'check', '--config', config_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=True,
+                )
+                detail = (result.stdout or 'configuration valid').strip().splitlines()[-1]
+                services.append({'name': 'ngrok', 'status': 'healthy', 'detail': detail})
+            except Exception as exc:
+                services.append({
+                    'name': 'ngrok',
+                    'status': 'unhealthy',
+                    'detail': f'{type(exc).__name__}: configuration check failed',
+                })
+
+    return jsonify({
+        'checked_at': datetime.now().isoformat(timespec='seconds'),
+        'services': services,
+    })
+
 @app.route('/api/posts')
 def api_posts():
     """포스트 목록 API"""
@@ -564,6 +839,8 @@ def api_posts():
     platform = request.args.get('platform', '').strip()
     published_on = request.args.get('published_on', '').strip()
     hidden_only = request.args.get('hidden_only', '0') == '1'
+    if hidden_only and not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
     
     conn = get_db_connection()
     if not conn:
@@ -960,6 +1237,8 @@ def api_toggle_hide():
     """포스트 숨김/표시 토글"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
+    if not is_admin():
+        return jsonify({'error': 'Admin authentication required'}), 403
 
     payload = request.get_json(silent=True) or {}
     post_id = payload.get('id')

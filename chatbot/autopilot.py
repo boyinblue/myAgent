@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import runpy
 import sys
@@ -18,6 +19,7 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(ROOT_DIR)
 TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
 BOT_STARTED_AT = time.time()
+MODEL_STATE_PATH = Path(PROJECT_ROOT) / ".runtime" / "autopilot_model_state.json"
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
@@ -174,43 +176,87 @@ def ask_gemini(prompt: str, system_prompt: str, model: str = "gemini-1.5-flash")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    fallback_models = [model] if model else []
+    # 중복 제거하되 순서 유지
+    models_to_try = list(dict.fromkeys(fallback_models))
+
     data = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": prompt}]}],
     }
-    try:
-        response = requests.post(url, json=data, timeout=120)
-        response.raise_for_status()
-        body = response.json()
-    except Exception as exc:
-        raise RuntimeError(f"Gemini 요청 실패: {exc}") from exc
 
+    last_exc: Exception | None = None
+    for idx, target_model in enumerate(models_to_try):
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{target_model}:generateContent"
+        )
+        max_retries = 3 if idx == 0 else 1
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    url,
+                    headers={"x-goog-api-key": api_key},
+                    json=data,
+                    timeout=120,
+                )
+                if response.status_code in (429, 500, 502, 503, 504):
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)
+                        continue
+                    response.raise_for_status()
+                response.raise_for_status()
+                body = response.json()
+                candidates = body.get("candidates", [])
+                if not candidates:
+                    return ""
+                parts = candidates[0].get("content", {}).get("parts", [])
+                texts = [p.get("text", "") for p in parts if p.get("text")]
+                return "\n".join(texts).strip()
+            except Exception as exc:
+                last_exc = exc
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status in (401, 403):
+                    raise RuntimeError(
+                        f"Gemini 인증 실패 (HTTP {status}). GEMINI_API_KEY를 확인하세요."
+                    ) from exc
+                if status in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                break
 
-    candidates = body.get("candidates", [])
-    if not candidates:
-        return ""
-    parts = candidates[0].get("content", {}).get("parts", [])
-    texts = [p.get("text", "") for p in parts if p.get("text")]
-    return "\n".join(texts).strip()
+    raise RuntimeError(f"Gemini 요청 실패: {last_exc}") from last_exc
 
 
 def ask_model(prompt: str, system_prompt: str) -> str:
     provider = str(
         get_config_value(
             "autopilot.provider",
-            os.getenv("AUTOPILOT_PROVIDER", "ollama"),
+            "ollama",
         )
     ).strip().lower()
 
     if provider == "gemini":
-        model = str(
-            get_config_value(
-                "autopilot.models.gemini",
-                os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
-            )
-        )
-        return ask_gemini(prompt, system_prompt, model=model)
+        configured = get_config_value("autopilot.models.gemini", ["gemini-flash-lite-latest"])
+        models = configured if isinstance(configured, list) else [configured]
+        try:
+            if MODEL_STATE_PATH.is_file():
+                last_model = json.loads(MODEL_STATE_PATH.read_text(encoding="utf-8")).get("last_successful_gemini_model")
+                if last_model in models:
+                    models = [last_model, *[item for item in models if item != last_model]]
+        except Exception:
+            pass
+        last_error = None
+        for model in models:
+            try:
+                result = ask_gemini(prompt, system_prompt, model=str(model))
+                MODEL_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                MODEL_STATE_PATH.write_text(json.dumps({"last_successful_gemini_model": model}), encoding="utf-8")
+                return result
+            except Exception as exc:
+                last_error = exc
+                continue
+        logging.warning("All Gemini models failed; falling back to Ollama: %s", last_error)
 
     model = str(
         get_config_value(
@@ -991,6 +1037,11 @@ def answer_chat(user_prompt: str, skills_md: str) -> str:
 
 
 def local_natural_fallback(user_prompt: str, reason: str = "fallback") -> str:
+    if reason == "provider_auth_error":
+        return (
+            "AI 제공자 인증에 실패했습니다. 서버의 GEMINI_API_KEY를 확인하거나 새 키로 교체해 주세요.\n"
+            "- 상태: provider_auth_error"
+        )
     return (
         "요청은 확인했어요. 현재 AI 추론 경로에 일시적인 문제가 있어 기본 모드로 응답합니다.\n"
         f"- 상태: {reason}\n"
@@ -1334,7 +1385,10 @@ def autopilot(user_prompt: str):
     try:
         decision = decide_action(user_prompt, skills_md)
     except Exception as exc:
-        print(local_natural_fallback(user_prompt, reason="router_exception"))
+        status = getattr(getattr(exc.__cause__, "response", None), "status_code", None)
+        reason = "provider_auth_error" if status in (401, 403) else "router_exception"
+        logging.error("Autopilot router failed (%s): %s", reason, exc)
+        print(local_natural_fallback(user_prompt, reason=reason))
         return
 
     action = decision.get("action", "chat")

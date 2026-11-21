@@ -121,6 +121,21 @@ def find_ngrok_exe():
 
     return None
 
+
+def find_ngrok_config():
+    """Find the config used by both native and Snap ngrok installations."""
+    configured = os.getenv('NGROK_CONFIG', '').strip()
+    candidates = [
+        Path(configured).expanduser() if configured else None,
+        Path.home() / 'snap' / 'ngrok' / 'common' / '.config' / 'ngrok' / 'ngrok.yml',
+        Path.home() / '.config' / 'ngrok' / 'ngrok.yml',
+        Path(os.environ.get('APPDATA', '')) / 'ngrok' / 'ngrok.yml',
+    ]
+    for candidate in candidates:
+        if candidate and candidate.is_file():
+            return str(candidate)
+    return None
+
 def launch_dashboard():
     """웹 대시보드 실행"""
     
@@ -134,7 +149,20 @@ def launch_dashboard():
     
     # ngrok 정상 작동 확인
     try:
-        result = subprocess.run([ngrok_exe, 'version'], capture_output=True, text=True, check=True, timeout=5)
+        subprocess.run([ngrok_exe, 'version'], capture_output=True, text=True, check=True, timeout=5)
+        ngrok_config = find_ngrok_config()
+        if not ngrok_config:
+            return {
+                'success': False,
+                'message': '❌ ngrok 설정 파일을 찾을 수 없습니다.\n\n실행: ngrok config add-authtoken YOUR_AUTHTOKEN'
+            }
+        subprocess.run(
+            [ngrok_exe, 'config', 'check', '--config', ngrok_config],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
     except subprocess.CalledProcessError as e:
         # ngrok 인증 오류인 경우
         stderr = e.stderr if e.stderr else ""
@@ -194,25 +222,35 @@ ngrok v3+ 에서는 계정 및 authtoken 이 필요합니다.
     # 프로젝트 루트에서 실행하도록 cwd 설정
     project_root = web_dashboard_dir.parent
     
-    # 백그라운드 프로세스로 실행
-    process = subprocess.Popen(
-        [sys.executable, str(start_script)],
-        cwd=str(project_root),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True  # 세션 분리
-    )
+    # 백그라운드 프로세스로 실행하고, 원인 분석이 가능하도록 로그를 보존합니다.
+    log_path = web_dashboard_dir / 'dashboard.log'
+    log_handle = log_path.open('a', encoding='utf-8')
+    try:
+        child_env = os.environ.copy()
+        child_env['NGROK_CONFIG'] = ngrok_config
+        process = subprocess.Popen(
+            [sys.executable, '-u', str(start_script)],
+            cwd=str(project_root),
+            env=child_env,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True  # 세션 분리
+        )
+    finally:
+        log_handle.close()
 
     # 초기 부팅 실패(포트 충돌/ngrok 오류 등) 조기 감지
     import time
     time.sleep(2)
     if process.poll() is not None:
-        stdout, stderr = process.communicate(timeout=2)
-        error_text = (stderr or stdout or 'unknown error').strip()
+        try:
+            error_text = log_path.read_text(encoding='utf-8', errors='replace')[-2000:].strip()
+        except OSError:
+            error_text = 'unknown error'
         return {
             'success': False,
-            'message': f'❌ 웹 대시보드 시작 실패\n\n{error_text[:500]}'
+            'message': f'❌ 웹 대시보드 시작 실패\n\n{error_text[-500:]}\n\n로그: {log_path}'
         }
     
     # PID 저장

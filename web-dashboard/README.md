@@ -155,7 +155,8 @@ C:\Users\<사용자명>\Documents\Projects\myAgent
 
 - Python 웹 서버가 백그라운드에서 실행됩니다.
 - 별도의 검은색 콘솔 창이 표시되지 않습니다.
-- 웹 대시보드는 로컬 주소 `http://127.0.0.1:5000`에서 접근할 수 있습니다.
+- 같은 PC에서는 `http://127.0.0.1:5000`으로 접속할 수 있습니다.
+- 같은 네트워크의 다른 PC에서는 실행 로그에 출력된 토큰 포함 LAN URL로 접속합니다.
 - 실행 로그는 `web-dashboard/start.log`에 기록됩니다.
 
 ## 보안 특징
@@ -163,7 +164,27 @@ C:\Users\<사용자명>\Documents\Projects\myAgent
 - **일회용 토큰**: URL은 한 번만 사용 가능
 - **시간 제한**: 2시간 후 자동 만료
 - **무작위 URL**: ngrok이 추측하기 어려운 무작위 URL 생성
-- **로컬 전용**: 외부에서 직접 접속 불가능
+- **LAN 인증**: localhost 외의 직접 접속에는 제한시간·사용횟수 토큰 필요
+- **인터넷 접속**: 포트를 직접 공개하지 않고 ngrok 토큰 URL 사용
+
+### 같은 네트워크에서 접속
+
+`python web-dashboard/start.py`를 실행하면 다음 두 주소가 출력됩니다.
+
+```text
+로컬 접속: http://127.0.0.1:5000
+LAN 접속: http://192.168.x.x:5000/?token=...
+```
+
+다른 PC에서는 두 번째 주소 전체를 사용합니다. Windows 방화벽이 접속을 막으면 관리자
+PowerShell에서 사설 네트워크와 로컬 서브넷에만 포트 5000을 허용합니다.
+
+```powershell
+New-NetFirewallRule -DisplayName "myAgent Dashboard LAN" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow -Profile Private -RemoteAddress LocalSubnet
+```
+
+공유기 포트포워딩으로 5000번 포트를 인터넷에 직접 노출하지 마세요. 인터넷에서는 텔레그램의
+`웹 대시보드 시작` 명령으로 생성되는 ngrok URL을 사용합니다.
 
 ## 대시보드 기능
 
