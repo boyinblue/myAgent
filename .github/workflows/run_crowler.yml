@@ -16,7 +16,7 @@ jobs:
     runs-on: [self-hosted, Linux, ARM64]
     defaults:
       run:
-        shell: bash   # 👈 리눅스 기본 bash 사용 (경로 충돌 방지)
+        shell: bash # 👉 리눅스 기본 bash 사용 (경로 충돌 방지)
 
     steps:
       - name: Checkout code
@@ -54,15 +54,29 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          status="$(git status --porcelain archive/archive_index.db)"
+          status="$(git status --porcelain archive/)"
           if [[ -z "$status" ]]; then
             echo "No changes to commit"
             exit 0
           fi
 
-          git add archive/archive_index.db
-          git commit -m "ci: use self-hosted runner"
+          git add archive/
+          git commit -m "chore(archive): update crawled posts and db"
+          git pull --rebase
           git push
+
+      - name: Sync Archive to Local Dashboard Project
+        run: |
+          LOCAL_ARCHIVE_DIR="/home/parksejin/project/myAgent/archive"
+          if [[ -d "$LOCAL_ARCHIVE_DIR" ]]; then
+            rsync -av --delete \
+              --exclude 'archive_index.db-wal' \
+              --exclude 'archive_index.db-shm' \
+              "$GITHUB_WORKSPACE/archive/" "$LOCAL_ARCHIVE_DIR/"
+            echo "[+] 로컬 대시보드 archive 동기화 완료"
+          else
+            echo "[!] 로컬 archive 디렉터리를 찾을 수 없습니다: $LOCAL_ARCHIVE_DIR"
+          fi
 
       - name: Send Telegram Notification
         env:
