@@ -13,6 +13,9 @@ EXTRA_FLAGS=(
   --exclude "*.pyc"
   --exclude "**/dashboard.pid"
   --exclude "dashboard.pid"
+  --exclude "*.conflict*"
+  --exclude "**/*.conflict*"
+  --exclude "web-dashboard/**/*.docx"
   --exclude ".tmp.driveupload/**"
   --progress
   --stats 1s
@@ -27,6 +30,9 @@ DEDUPE_FLAGS=(
   --exclude "*.pyc"
   --exclude "**/dashboard.pid"
   --exclude "dashboard.pid"
+  --exclude "*.conflict*"
+  --exclude "**/*.conflict*"
+  --exclude "web-dashboard/**/*.docx"
 )
 
 if [[ "$DRY_RUN" == "--dry-run" ]]; then
@@ -46,7 +52,7 @@ case "$MODE" in
     rclone sync "$REMOTE_PATH" "$LOCAL_PATH" "${EXTRA_FLAGS[@]}"
     ;;
   bisync)
-    rclone bisync "$LOCAL_PATH" "$REMOTE_PATH" "${EXTRA_FLAGS[@]}"
+    rclone bisync "$REMOTE_PATH" "$LOCAL_PATH" "${EXTRA_FLAGS[@]}"
     ;;
   *)
     echo "Unsupported mode: $MODE (use copy, sync, or bisync)" >&2

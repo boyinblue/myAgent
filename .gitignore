@@ -14,10 +14,6 @@ __pycache__/
 *.db-journal
 
 # Google API credentials
-google_oauth2_credentials.json
-google_service_credentials.json
-google_oauth2_token.json
-token.pickle
 /credentials/
 
 # Private archive data

@@ -885,10 +885,6 @@ def api_health():
     credentials_dir = project_root / 'credentials' / 'google'
     drive_credentials = credentials_dir / 'google_oauth2_credentials.json'
     drive_token = credentials_dir / 'google_oauth2_token.json'
-    if not drive_credentials.exists():
-        drive_credentials = project_root / 'google_oauth2_credentials.json'
-    if not drive_token.exists():
-        drive_token = project_root / 'google_oauth2_token.json'
     if not drive_credentials.exists() or not drive_token.exists():
         services.append({
             'name': 'Google Drive',

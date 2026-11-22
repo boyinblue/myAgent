@@ -28,10 +28,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CREDENTIALS_DIR = PROJECT_ROOT / "credentials" / "google"
 OAUTH_CREDENTIAL_FILE = CREDENTIALS_DIR / "google_oauth2_credentials.json"
 TOKEN_FILE = CREDENTIALS_DIR / "google_oauth2_token.json"
-if not OAUTH_CREDENTIAL_FILE.exists():
-    OAUTH_CREDENTIAL_FILE = PROJECT_ROOT / "google_oauth2_credentials.json"
-if not TOKEN_FILE.exists():
-    TOKEN_FILE = PROJECT_ROOT / "google_oauth2_token.json"
 SCOPES = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/drive.readonly',
