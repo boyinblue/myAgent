@@ -1,1922 +1,1937 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>아카이브 대시보드</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%232c7be5'/%3E%3Cstop offset='1' stop-color='%2300a78e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M16 19c0-3.3 2.7-6 6-6h11c1.8 0 3.6.8 4.7 2.2l1.2 1.5c.8 1 2 1.5 3.3 1.5H48c3.3 0 6 2.7 6 6v19c0 3.3-2.7 6-6 6H22c-3.3 0-6-2.7-6-6V19z' fill='url(%23g)'/%3E%3Cpath d='M24 27h22M24 35h16' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-
-        .brand-title {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-        }
-
-        .brand-mark {
-            width: 52px;
-            height: 52px;
-            border-radius: 16px;
-            background: linear-gradient(145deg, #1f2937, #111827);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 10px 22px rgba(17,24,39,0.28);
-        }
-
-        .brand-mark::before {
-            content: '';
-            width: 30px;
-            height: 34px;
-            border-radius: 9px;
-            background: linear-gradient(180deg, #60a5fa 0%, #34d399 100%);
-            clip-path: polygon(0 0, 70% 0, 100% 24%, 100% 100%, 0 100%);
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
-        }
-
-        .brand-copy {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 2px;
-        }
-
-        .brand-kicker {
-            font-size: 11px;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            opacity: 0.78;
-        }
-        
-        header h1 {
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-        
-        header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-
-        .primary-tabs {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            padding: 14px 20px;
-            background: #f8fafc;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .primary-tab {
-            background: transparent;
-            color: #475569;
-            border: 1px solid transparent;
-        }
-
-        .primary-tab.active {
-            color: #fff;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .tab-panel {
-            display: none;
-        }
-
-        .tab-panel.active {
-            display: block;
-        }
-
-        .tab-heading {
-            padding: 24px 30px 4px;
-            color: #1f2937;
-        }
-
-        .tab-heading p {
-            margin-top: 6px;
-            color: #64748b;
-            font-size: 13px;
-        }
-
-        .health-toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            padding: 16px 30px;
-        }
-
-        .health-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 14px;
-            padding: 0 30px 30px;
-        }
-
-        .health-card {
-            padding: 18px;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            background: #fff;
-        }
-
-        .health-card h3 {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            font-size: 15px;
-            margin-bottom: 9px;
-        }
-
-        .health-status {
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 11px;
-            text-transform: uppercase;
-        }
-
-        .health-status.healthy { background: #dcfce7; color: #166534; }
-        .health-status.unhealthy { background: #fee2e2; color: #991b1b; }
-        .health-status.not_configured { background: #fef3c7; color: #92400e; }
-
-        .health-detail {
-            color: #64748b;
-            font-size: 12px;
-            line-height: 1.5;
-            overflow-wrap: anywhere;
-        }
-
-        .health-restart {
-            margin-top: 14px;
-            padding: 7px 11px;
-            font-size: 12px;
-            background: #334155;
-        }
-        
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            padding: 20px 30px;
-            background: #f8f9fa;
-        }
-        
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        
-        .stat-card h3 {
-            color: #6c757d;
-            font-size: 14px;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-        }
-        
-        .stat-card .value {
-            font-size: 36px;
-            font-weight: bold;
-            color: #667eea;
-        }
-        
-        .controls {
-            padding: 20px 30px;
-            background: white;
-            border-bottom: 1px solid #e9ecef;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .status-banner {
-            width: 100%;
-            display: none;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 12px 16px;
-            border-radius: 10px;
-            background: #eef6ff;
-            border: 1px solid #bfdbfe;
-            color: #1e3a8a;
-        }
-
-        .status-banner.running {
-            display: flex;
-        }
-
-        .status-banner a {
-            color: #1d4ed8;
-            font-weight: 600;
-            text-decoration: none;
-            white-space: nowrap;
-        }
-
-        .status-banner a:hover {
-            text-decoration: underline;
-        }
-
-        .view-toggle {
-            display: flex;
-            gap: 8px;
-            width: 100%;
-        }
-
-        .view-toggle button {
-            flex: 1;
-            max-width: 160px;
-        }
-
-        .view-toggle button.active {
-            background: #212529;
-        }
-        
-        .search-box {
-            flex: 1;
-            min-width: 250px;
-            padding: 12px 16px;
-            border: 2px solid #e9ecef;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .search-box:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        select {
-            padding: 12px 16px;
-            border: 2px solid #e9ecef;
-            border-radius: 6px;
-            font-size: 14px;
-            background: white;
-            cursor: pointer;
-        }
-        
-        button {
-            padding: 12px 24px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        
-        button:hover {
-            opacity: 0.9;
-        }
-        
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .posts-list {
-            padding: 30px;
-        }
-        
-        .post-item {
-            background: white;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            transition: box-shadow 0.2s;
-        }
-        
-        .post-item:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        
-        .post-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        
-        .platform-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            background: #667eea;
-            color: white;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .post-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #212529;
-            margin-bottom: 8px;
-        }
-        
-        .post-title a {
-            color: inherit;
-            text-decoration: none;
-        }
-        
-        .post-title a:hover {
-            color: #667eea;
-        }
-        
-        .post-meta {
-            color: #6c757d;
-            font-size: 13px;
-            margin-bottom: 12px;
-        }
-        
-        .post-summary {
-            color: #495057;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        
-        .post-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #e9ecef;
-        }
-        
-        .post-hide-btn {
-            padding: 6px 12px;
-            font-size: 12px;
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 4px;
-            cursor: pointer;
-            color: #856404;
-            transition: all 0.2s;
-        }
-        
-        .post-hide-btn:hover {
-            background: #ffc107;
-            color: white;
-        }
-        
-        .post-hide-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            padding: 30px;
-        }
-
-        .crawl-progress-panel {
-            width: 100%;
-            display: none;
-            margin-top: 10px;
-            border: 1px solid #dbe4ff;
-            border-radius: 10px;
-            background: #f7f9ff;
-            padding: 12px;
-        }
-
-        .crawl-progress-panel.active {
-            display: block;
-        }
-
-        .crawl-progress-title {
-            font-size: 13px;
-            font-weight: 700;
-            color: #3a4bb8;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-        }
-
-        .crawl-progress-toggle {
-            padding: 4px 9px;
-            background: #fff;
-            color: #3a4bb8;
-            border: 1px solid #c7d2fe;
-            border-radius: 6px;
-            font-size: 12px;
-        }
-
-        .crawl-progress-panel.collapsed .crawl-progress-log {
-            display: none;
-        }
-
-        .crawl-progress-panel.collapsed .crawl-progress-title {
-            margin-bottom: 0;
-        }
-
-        .crawl-progress-log {
-            max-height: 180px;
-            overflow-y: auto;
-            background: #fff;
-            border: 1px solid #e7ebff;
-            border-radius: 8px;
-            padding: 8px;
-            font-size: 12px;
-            line-height: 1.5;
-            color: #333;
-            white-space: pre-wrap;
-        }
-
-        .chatbot-panel {
-            margin: 0 30px 24px;
-            border: 1px solid #e9ecef;
-            border-radius: 12px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .chatbot-header {
-            background: linear-gradient(135deg, #1f2937 0%, #334155 100%);
-            color: #fff;
-            padding: 12px 14px;
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        .chatbot-messages {
-            min-height: 140px;
-            max-height: 260px;
-            overflow-y: auto;
-            padding: 12px;
-            background: #f8fafc;
-            border-top: 1px solid #e9ecef;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .chat-bubble {
-            margin-bottom: 10px;
-            padding: 10px 12px;
-            border-radius: 10px;
-            font-size: 13px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-        }
-
-        .chat-bubble.user {
-            background: #e8f0fe;
-            color: #1f3a8a;
-            margin-left: 22%;
-        }
-
-        .chat-bubble.bot {
-            background: #ffffff;
-            color: #1f2937;
-            margin-right: 12%;
-            border: 1px solid #e5e7eb;
-        }
-
-        .chatbot-input-row {
-            display: flex;
-            gap: 8px;
-            padding: 10px;
-        }
-
-        .chatbot-input-row input {
-            flex: 1;
-            padding: 10px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            font-size: 13px;
-        }
-
-        .chatbot-input-row button {
-            padding: 10px 14px;
-            border-radius: 8px;
-        }
-        
-        .pagination button {
-            padding: 8px 16px;
-            font-size: 14px;
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #6c757d;
-        }
-        
-        .no-results {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-        }
-        
-        .chart-container {
-            padding: 20px 30px 30px;
-            background: white;
-        }
-
-        .stats-panel {
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .calendar-panel {
-            padding: 14px 20px 18px;
-            background: white;
-            border-top: 1px solid #e9ecef;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .discover-home {
-            padding: 16px 30px 0;
-        }
-
-        .calendar-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 14px;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .calendar-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: #343a40;
-        }
-
-        .calendar-nav {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .calendar-range-toggle {
-            display: flex;
-            gap: 6px;
-        }
-
-        .calendar-range-toggle button {
-            padding: 8px 14px;
-            font-size: 12px;
-        }
-
-        .calendar-range-toggle button.active {
-            background: #212529;
-        }
-
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, minmax(0, 1fr));
-            gap: 6px;
-        }
-
-        .calendar-weekday {
-            text-align: center;
-            color: #6c757d;
-            font-size: 12px;
-            font-weight: 700;
-            padding: 8px 0;
-            text-transform: uppercase;
-        }
-
-        .calendar-day {
-            min-height: 72px;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 6px;
-            background: #fff;
-            cursor: pointer;
-            text-align: left;
-        }
-
-        .calendar-day:hover {
-            border-color: #667eea;
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.18);
-        }
-
-        .calendar-day.empty {
-            background: #f8f9fa;
-            cursor: default;
-            border-style: dashed;
-        }
-
-        .calendar-day.selected {
-            border-color: #4954cc;
-            background: #eef0ff;
-        }
-
-        .calendar-day-number {
-            display: block;
-            font-size: 12px;
-            font-weight: 700;
-            color: #212529;
-            margin-bottom: 3px;
-        }
-
-        .calendar-day-count {
-            display: inline-block;
-            font-size: 11px;
-            color: #4954cc;
-            background: #e9ecff;
-            border-radius: 999px;
-            padding: 1px 7px;
-            margin-bottom: 4px;
-        }
-
-        .calendar-day-titles {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: grid;
-            gap: 2px;
-        }
-
-        .calendar-day-title {
-            font-size: 10px;
-            color: #495057;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .calendar-day-title a {
-            color: inherit;
-            text-decoration: none;
-        }
-
-        .calendar-day-title a:hover {
-            text-decoration: underline;
-        }
-
-        .discover-panel {
-            margin-top: 12px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .discover-card {
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 10px;
-            background: #fafbff;
-        }
-
-        .discover-card h4 {
-            font-size: 13px;
-            margin-bottom: 8px;
-            color: #4954cc;
-        }
-
-        .discover-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: grid;
-            gap: 6px;
-        }
-
-        .discover-list li {
-            font-size: 12px;
-            color: #495057;
-        }
-
-        .discover-item {
-            display: grid;
-            grid-template-columns: 88px minmax(0, 1fr);
-            gap: 10px;
-            align-items: start;
-            padding: 8px 0;
-            border-top: 1px solid #edf0f4;
-        }
-
-        .discover-item:first-child {
-            border-top: 0;
-            padding-top: 0;
-        }
-
-        .discover-thumb {
-            width: 88px;
-            height: 62px;
-            border-radius: 6px;
-            border: 1px solid #e9ecef;
-            background: #f1f3f5;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #868e96;
-            font-size: 10px;
-            font-weight: 600;
-        }
-
-        .discover-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        .discover-copy {
-            min-width: 0;
-        }
-
-        .discover-title {
-            display: block;
-            line-height: 1.45;
-            overflow-wrap: anywhere;
-        }
-
-        .discover-list a {
-            color: inherit;
-            text-decoration: none;
-        }
-
-        .discover-list a:hover {
-            text-decoration: underline;
-        }
-
-        .discover-meta {
-            display: inline-block;
-            margin-left: 6px;
-            font-size: 11px;
-            color: #868e96;
-            font-weight: 500;
-        }
-
-        .post-layout {
-            display: grid;
-            grid-template-columns: 120px 1fr;
-            gap: 16px;
-            align-items: start;
-        }
-
-        .post-thumb {
-            width: 120px;
-            height: 84px;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-            background: #f1f3f5;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #868e96;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .post-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        .post-content {
-            min-width: 0;
-        }
-
-        @media (max-width: 768px) {
-            .primary-tabs {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .brand-title {
-                align-items: flex-start;
-            }
-
-            .brand-copy {
-                align-items: flex-start;
-            }
-
-            .post-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .post-thumb {
-                width: 100%;
-                height: 160px;
-            }
-
-            .discover-panel {
-                grid-template-columns: 1fr;
-            }
-
-            .discover-item {
-                grid-template-columns: 88px minmax(0, 1fr);
-            }
-
-            .calendar-day {
-                min-height: 64px;
-            }
-        }
-        
-        canvas {
-            max-height: 300px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>아카이브 대시보드</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%232c7be5'/%3E%3Cstop offset='1' stop-color='%2300a78e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M16 19c0-3.3 2.7-6 6-6h11c1.8 0 3.6.8 4.7 2.2l1.2 1.5c.8 1 2 1.5 3.3 1.5H48c3.3 0 6 2.7 6 6v19c0 3.3-2.7 6-6 6H22c-3.3 0-6-2.7-6-6V19z' fill='url(%23g)'/%3E%3Cpath d='M24 27h22M24 35h16' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .brand-title {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: linear-gradient(145deg, #1f2937, #111827);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 10px 22px rgba(17,24,39,0.28);
+    }
+
+    .brand-mark::before {
+      content: '';
+      width: 30px;
+      height: 34px;
+      border-radius: 9px;
+      background: linear-gradient(180deg, #60a5fa 0%, #34d399 100%);
+      clip-path: polygon(0 0, 70% 0, 100% 24%, 100% 100%, 0 100%);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+    }
+
+    .brand-copy {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+
+    .brand-kicker {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.78;
+    }
+
+    header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .primary-tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      padding: 14px 20px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .primary-tab {
+      background: transparent;
+      color: #475569;
+      border: 1px solid transparent;
+    }
+
+    .primary-tab.active {
+      color: #fff;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .tab-heading {
+      padding: 24px 30px 4px;
+      color: #1f2937;
+    }
+
+    .tab-heading p {
+      margin-top: 6px;
+      color: #64748b;
+      font-size: 13px;
+    }
+
+    .health-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 30px;
+    }
+
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      padding: 0 30px 20px;
+    }
+
+    .health-card {
+      padding: 18px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .health-card h3 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 15px;
+      margin-bottom: 9px;
+    }
+
+    .health-status {
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .health-status.healthy { background: #dcfce7; color: #166534; }
+    .health-status.unhealthy { background: #fee2e2; color: #991b1b; }
+    .health-status.not_configured { background: #fef3c7; color: #92400e; }
+
+    .health-detail {
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .health-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .health-restart,
+    .health-log-btn {
+      padding: 7px 11px;
+      font-size: 12px;
+      background: #334155;
+    }
+
+    .health-log-btn {
+      background: #475569;
+    }
+
+    .service-log-panel {
+      margin: 0 30px 30px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+
+    .service-log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .service-log-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .service-log-controls button {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .service-log-body {
+      padding: 14px 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #0f172a;
+      background: #ffffff;
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      padding: 20px 30px;
+      background: #f8f9fa;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    .stat-card h3 {
+      color: #6c757d;
+      font-size: 14px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .stat-card .value {
+      font-size: 36px;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .controls {
+      padding: 20px 30px;
+      background: white;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .status-banner {
+      width: 100%;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #eef6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e3a8a;
+    }
+
+    .status-banner.running {
+      display: flex;
+    }
+
+    .status-banner a {
+      color: #1d4ed8;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .status-banner a:hover {
+      text-decoration: underline;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .view-toggle button {
+      flex: 1;
+      max-width: 160px;
+    }
+
+    .view-toggle button.active {
+      background: #212529;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 250px;
+      padding: 12px 16px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .search-box:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    select {
+      padding: 12px 16px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .posts-list {
+      padding: 20px 30px 30px;
+    }
+
+    .post-item {
+      background: white;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 15px;
+      transition: box-shadow 0.2s;
+    }
+
+    .post-item:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+
+    .post-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .platform-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #667eea;
+      color: white;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .post-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #212529;
+      margin-bottom: 8px;
+    }
+
+    .post-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .post-title a:hover {
+      color: #667eea;
+    }
+
+    .post-meta {
+      color: #6c757d;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .post-summary {
+      color: #495057;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .post-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e9ecef;
+    }
+
+    .post-hide-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #856404;
+      transition: all 0.2s;
+    }
+
+    .post-hide-btn:hover {
+      background: #ffc107;
+      color: white;
+    }
+
+    .post-hide-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 30px;
+    }
+
+    .crawl-progress-panel {
+      width: 100%;
+      display: none;
+      margin-top: 10px;
+      border: 1px solid #dbe4ff;
+      border-radius: 10px;
+      background: #f7f9ff;
+      padding: 12px;
+    }
+
+    .crawl-progress-panel.active {
+      display: block;
+    }
+
+    .crawl-progress-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #3a4bb8;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .crawl-progress-toggle {
+      padding: 4px 9px;
+      background: #fff;
+      color: #3a4bb8;
+      border: 1px solid #c7d2fe;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .crawl-progress-panel.collapsed .crawl-progress-log {
+      display: none;
+    }
+
+    .crawl-progress-panel.collapsed .crawl-progress-title {
+      margin-bottom: 0;
+    }
+
+    .crawl-progress-log {
+      max-height: 180px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #e7ebff;
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #333;
+      white-space: pre-wrap;
+    }
+
+    .pagination button {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #6c757d;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6c757d;
+    }
+
+    .chart-container {
+      padding: 20px 30px 30px;
+      background: white;
+    }
+
+    .stats-panel {
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .calendar-panel {
+      padding: 14px 20px 18px;
+      background: white;
+      border-top: 1px solid #e9ecef;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .discover-home {
+      padding: 16px 30px 0;
+    }
+
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .calendar-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #343a40;
+    }
+
+    .calendar-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .calendar-range-toggle {
+      display: flex;
+      gap: 6px;
+    }
+
+    .calendar-range-toggle button {
+      padding: 8px 14px;
+      font-size: 12px;
+    }
+
+    .calendar-range-toggle button.active {
+      background: #212529;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .calendar-weekday {
+      text-align: center;
+      color: #6c757d;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 0;
+      text-transform: uppercase;
+    }
+
+    .calendar-day {
+      min-height: 72px;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 6px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .calendar-day:hover {
+      border-color: #667eea;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.18);
+    }
+
+    .calendar-day.empty {
+      background: #f8f9fa;
+      cursor: default;
+      border-style: dashed;
+    }
+
+    .calendar-day.selected {
+      border-color: #4954cc;
+      background: #eef0ff;
+    }
+
+    .calendar-day-number {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #212529;
+      margin-bottom: 3px;
+    }
+
+    .calendar-day-count {
+      display: inline-block;
+      font-size: 11px;
+      color: #4954cc;
+      background: #e9ecff;
+      border-radius: 999px;
+      padding: 1px 7px;
+      margin-bottom: 4px;
+    }
+
+    .calendar-day-titles {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .calendar-day-title {
+      font-size: 10px;
+      color: #495057;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .calendar-day-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .calendar-day-title a:hover {
+      text-decoration: underline;
+    }
+
+    .discover-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .discover-card {
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fafbff;
+    }
+
+    .discover-card h4 {
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: #4954cc;
+    }
+
+    .discover-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    .discover-list li {
+      font-size: 12px;
+      color: #495057;
+    }
+
+    .discover-item {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 8px 0;
+      border-top: 1px solid #edf0f4;
+    }
+
+    .discover-item:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .discover-thumb {
+      width: 88px;
+      height: 62px;
+      border-radius: 6px;
+      border: 1px solid #e9ecef;
+      background: #f1f3f5;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #868e96;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .discover-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .discover-copy {
+      min-width: 0;
+    }
+
+    .discover-title {
+      display: block;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .discover-list a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .discover-list a:hover {
+      text-decoration: underline;
+    }
+
+    .discover-meta {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 11px;
+      color: #868e96;
+      font-weight: 500;
+    }
+
+    .post-layout {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .post-thumb {
+      width: 120px;
+      height: 84px;
+      border-radius: 8px;
+      border: 1px solid #e9ecef;
+      background: #f1f3f5;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #868e96;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .post-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .post-content {
+      min-width: 0;
+    }
+
+    @media (max-width: 768px) {
+      .primary-tabs {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .brand-title {
+        align-items: flex-start;
+      }
+
+      .brand-copy {
+        align-items: flex-start;
+      }
+
+      .post-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .post-thumb {
+        width: 100%;
+        height: 160px;
+      }
+
+      .discover-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .discover-item {
+        grid-template-columns: 88px minmax(0, 1fr);
+      }
+
+      .calendar-day {
+        min-height: 64px;
+      }
+    }
+
+    canvas {
+      max-height: 300px;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>
-                <span class="brand-title">
-                    <span class="brand-mark" aria-hidden="true"></span>
-                    <span class="brand-copy">
-                        <span class="brand-kicker">Archive Control</span>
-                        <span>아카이브 대시보드</span>
-                    </span>
-                </span>
-            </h1>
-            <p>콘텐츠 크롤링 관리 및 통계</p>
-        </header>
-        
-        <nav class="primary-tabs" aria-label="대시보드 메뉴">
-            <button class="primary-tab active" data-tab="contents" onclick="switchTab('contents')">Contents</button>
-            <button class="primary-tab" data-tab="crawling" onclick="switchTab('crawling')">Crawling</button>
-            <button class="primary-tab" data-tab="statistics" onclick="switchTab('statistics')">Statistics</button>
-            <button class="primary-tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
-        </nav>
+  <div class="container">
+    <header>
+      <h1>
+        <span class="brand-title">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-copy">
+            <span class="brand-kicker">Archive Control</span>
+            <span>아카이브 대시보드</span>
+          </span>
+        </span>
+      </h1>
+      <p>콘텐츠 크롤링 관리 및 통계</p>
+    </header>
 
-        <section class="tab-panel active" id="tab-contents">
-            <div class="controls">
-                <div class="view-toggle">
-                    <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
-                    <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
-                    <button id="hiddenPostsToggleBtn" onclick="toggleHiddenPosts()">🙈 숨김 글 보기</button>
-                </div>
-                <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
-                <select id="platformFilter">
-                    <option value="">전체 플랫폼</option>
-                </select>
-                <button onclick="searchPosts()">🔍 검색</button>
-            </div>
+    <nav class="primary-tabs" aria-label="대시보드 메뉴">
+      <button class="primary-tab active" data-tab="contents" onclick="switchTab('contents')">Contents</button>
+      <button class="primary-tab" data-tab="crawling" onclick="switchTab('crawling')">Crawling</button>
+      <button class="primary-tab" data-tab="statistics" onclick="switchTab('statistics')">Statistics</button>
+      <button class="primary-tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
+    </nav>
 
-            <div class="calendar-panel" id="calendarPanel" style="display:none;">
-                <div class="calendar-header">
-                    <div class="calendar-title" id="calendarTitle">-</div>
-                    <div class="calendar-nav">
-                        <div class="calendar-range-toggle">
-                            <button id="monthRangeBtn" class="active" onclick="switchCalendarRange('month')">월간</button>
-                            <button id="weekRangeBtn" onclick="switchCalendarRange('week')">주간</button>
-                        </div>
-                        <button onclick="moveCalendar(-1)">← 이전</button>
-                        <button onclick="goToCurrentPeriod()">오늘</button>
-                        <button onclick="moveCalendar(1)">다음 →</button>
-                    </div>
-                </div>
-                <div class="calendar-grid" id="calendarGrid"></div>
-            </div>
-
-            <div class="posts-list" id="postsList">
-                <div class="loading">데이터를 불러오는 중...</div>
-            </div>
-            <div class="pagination" id="pagination"></div>
-        </section>
-
-        <section class="tab-panel" id="tab-crawling">
-            <div class="tab-heading">
-                <h2>Crawling</h2>
-                <p>콘텐츠 수집 실행과 GitHub Actions 진행 상태를 확인합니다.</p>
-            </div>
-            <div class="controls">
-                <div id="crawlStatusBanner" class="status-banner">
-                    <span id="crawlStatusText">크롤링 상태를 확인하는 중...</span>
-                    <a id="crawlStatusLink" href="#" target="_blank" rel="noopener" style="display:none;">실행 보기</a>
-                </div>
-                <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
-                <div id="crawlProgressPanel" class="crawl-progress-panel">
-                    <div class="crawl-progress-title">
-                        <span id="crawlProgressTitle">크롤링 진행 상황</span>
-                        <button type="button" class="crawl-progress-toggle" id="crawlProgressToggle" onclick="toggleCrawlProgress()">접기</button>
-                    </div>
-                    <div class="crawl-progress-log" id="crawlProgressLog">아직 실행 이력이 없습니다.</div>
-                </div>
-            </div>
-        </section>
-
-        <section class="tab-panel" id="tab-statistics">
-            <div class="tab-heading">
-                <h2>Statistics</h2>
-                <p>아카이브 규모와 플랫폼별 콘텐츠 분포입니다.</p>
-            </div>
-            <div class="stats-panel" id="statsPanel">
-                <div class="stats">
-                    <div class="stat-card"><h3>전체 포스트</h3><div class="value" id="totalPosts">-</div></div>
-                    <div class="stat-card"><h3>최근 30일</h3><div class="value" id="recentPosts">-</div></div>
-                    <div class="stat-card"><h3>플랫폼 수</h3><div class="value" id="platformCount">-</div></div>
-                </div>
-                <div class="chart-container"><canvas id="platformChart"></canvas></div>
-            </div>
-        </section>
-
-        <section class="tab-panel" id="tab-settings">
-            <div class="tab-heading">
-                <h2>Settings</h2>
-                <p>연결된 서비스와 로컬 데이터 저장소의 상태를 확인합니다.</p>
-            </div>
-            <div class="health-toolbar">
-                <span id="healthCheckedAt">아직 검사하지 않았습니다.</span>
-                <button onclick="loadHealth()">Health Check</button>
-            </div>
-            <div class="health-grid" id="healthGrid">
-                <div class="loading">Settings 탭을 열면 상태를 검사합니다.</div>
-            </div>
-        </section>
-
-        <!-- 크롤링 모달 -->
-        <div id="crawlModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-            <div style="background:#fff; border-radius:12px; padding:28px; width:480px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-                <h3 style="margin:0 0 16px; font-size:1.1rem;">🔄 크롤링 실행</h3>
-                <p style="margin:0 0 12px; color:#555; font-size:0.9rem;">URL을 입력하면 단건 크롤링, 비워두면 전체 크롤링을 실행합니다.</p>
-                <input type="url" id="crawlUrlInput" placeholder="https://example.tistory.com/123 (선택사항)"
-                    style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem; margin-bottom:16px;">
-                <div style="display:flex; gap:10px; justify-content:flex-end;">
-                    <button onclick="closeCrawlModal()" style="padding:8px 18px; border:1px solid #cbd5e1; background:#f3f4f6; color:#374151; border-radius:8px; cursor:pointer;">취소</button>
-                    <button onclick="triggerCrawl()" style="padding:8px 18px; background:#4285f4; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">🚀 실행</button>
-                </div>
-            </div>
+    <section class="tab-panel active" id="tab-contents">
+      <div class="controls">
+        <div class="view-toggle">
+          <button id="listModeBtn" class="active" onclick="switchView('list')">📝 리스트</button>
+          <button id="calendarModeBtn" onclick="switchView('calendar')">📅 달력</button>
+          <button id="hiddenPostsToggleBtn" onclick="toggleHiddenPosts()">🙈 숨김 글 보기</button>
         </div>
+        <input type="text" id="searchInput" class="search-box" placeholder="제목 또는 내용 검색...">
+        <select id="platformFilter">
+          <option value="">전체 플랫폼</option>
+        </select>
+        <button type="button" onclick="searchPosts()">🔍 검색</button>
+        <button type="button" onclick="resetFilters()" style="background:#64748b;">↺ 초기화</button>
+      </div>
 
-        <div id="adminLoginModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.58); z-index:1100; align-items:center; justify-content:center;">
-            <form id="adminLoginForm" style="background:#fff; border-radius:12px; padding:28px; width:420px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
-                <h3 style="margin:0 0 10px;">관리자 로그인</h3>
-                <p style="margin:0 0 16px; color:#64748b; font-size:13px;">Settings와 숨김 콘텐츠에 접근하려면 관리자 비밀번호가 필요합니다.</p>
-                <input type="password" id="adminPasswordInput" autocomplete="current-password" placeholder="관리자 비밀번호"
-                    style="width:100%; padding:11px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px;">
-                <div id="adminLoginError" role="alert" style="display:none; margin-top:10px; color:#b91c1c; font-size:13px;"></div>
-                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:18px;">
-                    <button type="button" onclick="closeAdminLogin(false)" style="background:#e2e8f0; color:#334155;">취소</button>
-                    <button type="submit" id="adminLoginSubmit">로그인</button>
-                </div>
-            </form>
+      <div class="discover-home" id="discoverHome">
+        <div class="discover-panel">
+          <div class="discover-card">
+            <h4>📅 1년 전 오늘</h4>
+            <ul class="discover-list" id="todayHistoryList">
+              <li>불러오는 중...</li>
+            </ul>
+          </div>
+          <div class="discover-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <h4 style="margin-bottom:0;">🎲 Random Post</h4>
+              <button type="button" onclick="loadNextRandomPost()" style="padding:4px 10px; font-size:12px;">+ 더 보기</button>
+            </div>
+            <ul class="discover-list" id="randomList">
+              <li>불러오는 중...</li>
+            </ul>
+          </div>
         </div>
+      </div>
 
+      <div class="calendar-panel" id="calendarPanel" style="display:none;">
+        <div class="calendar-header">
+          <div class="calendar-title" id="calendarTitle">-</div>
+          <div class="calendar-nav">
+            <div class="calendar-range-toggle">
+              <button id="monthRangeBtn" class="active" onclick="switchCalendarRange('month')">월간</button>
+              <button id="weekRangeBtn" onclick="switchCalendarRange('week')">주간</button>
+            </div>
+            <button onclick="moveCalendar(-1)">← 이전</button>
+            <button onclick="goToCurrentPeriod()">오늘</button>
+            <button onclick="moveCalendar(1)">다음 →</button>
+          </div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+      </div>
+
+      <div class="posts-list" id="postsList">
+        <div class="loading">데이터를 불러오는 중...</div>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-crawling">
+      <div class="tab-heading">
+        <h2>Crawling</h2>
+        <p>콘텐츠 수집 실행과 GitHub Actions 진행 상태를 확인합니다.</p>
+      </div>
+      <div class="controls">
+        <div id="crawlStatusBanner" class="status-banner">
+          <span id="crawlStatusText">크롤링 상태를 확인하는 중...</span>
+          <a id="crawlStatusLink" href="#" target="_blank" rel="noopener" style="display:none;">실행 보기</a>
+        </div>
+        <button id="crawlActionBtn" onclick="showCrawlModal()">🔄 크롤링 실행</button>
+        <div id="crawlProgressPanel" class="crawl-progress-panel">
+          <div class="crawl-progress-title">
+            <span id="crawlProgressTitle">크롤링 진행 상황</span>
+            <button type="button" class="crawl-progress-toggle" id="crawlProgressToggle" onclick="toggleCrawlProgress()">접기</button>
+          </div>
+          <div class="crawl-progress-log" id="crawlProgressLog">아직 실행 이력이 없습니다.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-statistics">
+      <div class="tab-heading">
+        <h2>Statistics</h2>
+        <p>아카이브 규모와 플랫폼별 콘텐츠 분포입니다.</p>
+      </div>
+      <div class="stats-panel" id="statsPanel">
+        <div class="stats">
+          <div class="stat-card"><h3>전체 포스트</h3><div class="value" id="totalPosts">-</div></div>
+          <div class="stat-card"><h3>최근 30일</h3><div class="value" id="recentPosts">-</div></div>
+          <div class="stat-card"><h3>플랫폼 수</h3><div class="value" id="platformCount">-</div></div>
+        </div>
+        <div class="chart-container"><canvas id="platformChart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-settings">
+      <div class="tab-heading">
+        <h2>Settings</h2>
+        <p>연결된 서비스와 로컬 데이터 저장소의 상태를 확인합니다.</p>
+      </div>
+      <div class="health-toolbar">
+        <span id="healthCheckedAt">아직 검사하지 않았습니다.</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" onclick="loadHealth()">Health Check</button>
+          <button type="button" onclick="openServiceLog('google_drive', 'Google Drive')" style="background:#475569;">📄 Health / Drive 로그</button>
+        </div>
+      </div>
+      <div class="health-grid" id="healthGrid">
+        <div class="loading">Settings 탭을 열면 상태를 검사합니다.</div>
+      </div>
+      <div class="service-log-panel" id="serviceLogPanel" style="display:none;">
+        <div class="service-log-header">
+          <span id="serviceLogTitle">서비스 로그</span>
+          <div class="service-log-controls">
+            <button type="button" onclick="changeServiceLogLines(80)">80줄</button>
+            <button type="button" onclick="changeServiceLogLines(120)">120줄</button>
+            <button type="button" onclick="changeServiceLogLines(250)">250줄</button>
+            <button type="button" onclick="refreshServiceLog()" style="background:#0f766e;">새로고침</button>
+            <button type="button" onclick="closeServiceLog()" style="background:#64748b;">닫기</button>
+          </div>
+        </div>
+        <pre class="service-log-body" id="serviceLogBody">로그를 불러오는 중...</pre>
+      </div>
+    </section>
+
+    <!-- 크롤링 모달 -->
+    <div id="crawlModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:#fff; border-radius:12px; padding:28px; width:480px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 16px; font-size:1.1rem;">🔄 크롤링 실행</h3>
+        <p style="margin:0 0 12px; color:#555; font-size:0.9rem;">URL을 입력하면 단건 크롤링, 비워두면 전체 크롤링을 실행합니다.</p>
+        <input type="url" id="crawlUrlInput" placeholder="https://example.tistory.com/123 (선택사항)"
+               style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem; margin-bottom:16px;">
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button onclick="closeCrawlModal()" style="padding:8px 18px; border:1px solid #cbd5e1; background:#f3f4f6; color:#374151; border-radius:8px; cursor:pointer;">취소</button>
+          <button onclick="triggerCrawl()" style="padding:8px 18px; background:#4285f4; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">🚀 실행</button>
+        </div>
+      </div>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script>
-        let currentPage = 1;
-        let platformChart = null;
-        let currentView = 'list';
-        let hiddenPostsMode = false;
-        let selectedDate = '';
-        const today = new Date();
-        let calendarYear = today.getFullYear();
-        let calendarMonth = today.getMonth() + 1;
-        let calendarRange = 'month';
-        let weekReferenceDate = formatYmd(today);
-        let crawlStatusTimer = null;
-        let crawlProgressTimer = null;
-        let adminLoginResolver = null;
 
-        async function readApiJson(response) {
-            const text = await response.text();
-            try {
-                return text ? JSON.parse(text) : {};
-            } catch (e) {
-                throw new Error(`서버가 JSON 대신 HTML을 반환했습니다 (HTTP ${response.status}). 대시보드를 재시작하고 새로고침하세요.`);
-            }
+    <div id="adminLoginModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.58); z-index:1100; align-items:center; justify-content:center;">
+      <form id="adminLoginForm" style="background:#fff; border-radius:12px; padding:28px; width:420px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+        <h3 style="margin:0 0 10px;">관리자 로그인</h3>
+        <p style="margin:0 0 16px; color:#64748b; font-size:13px;">Settings와 숨김 콘텐츠에 접근하려면 관리자 비밀번호가 필요합니다.</p>
+        <input type="password" id="adminPasswordInput" autocomplete="current-password" placeholder="관리자 비밀번호"
+               style="width:100%; padding:11px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px;">
+        <div id="adminLoginError" role="alert" style="display:none; margin-top:10px; color:#b91c1c; font-size:13px;"></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:18px;">
+          <button type="button" onclick="closeAdminLogin(false)" style="background:#e2e8f0; color:#334155;">취소</button>
+          <button type="submit" id="adminLoginSubmit">로그인</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+  let currentPage = 1;
+  let platformChart = null;
+  let currentView = 'list';
+  let hiddenPostsMode = false;
+  let selectedDate = '';
+  const today = new Date();
+  let calendarYear = today.getFullYear();
+  let calendarMonth = today.getMonth() + 1;
+  let calendarRange = 'month';
+  let weekReferenceDate = formatYmd(today);
+  let crawlStatusTimer = null;
+  let crawlProgressTimer = null;
+  let adminLoginResolver = null;
+  let activeLogService = 'google_drive';
+  let activeLogLabel = 'Google Drive';
+  let activeLogLines = 120;
+
+  async function readApiJson(response) {
+    const text = await response.text();
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error(`서버가 JSON 대신 HTML을 반환했습니다 (HTTP ${response.status}). 대시보드를 재시작하고 새로고침하세요.`);
+    }
+  }
+
+  function switchTab(tabName) {
+    if (tabName === 'settings' && !window.dashboardAdminAuthenticated) {
+      adminLogin().then((ok) => { if (ok) switchTab('settings'); });
+      return;
+    }
+    document.querySelectorAll('.primary-tab').forEach((button) => {
+      button.classList.toggle('active', button.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.tab-panel').forEach((panel) => {
+      panel.classList.toggle('active', panel.id === `tab-${tabName}`);
+    });
+
+    if (tabName === 'statistics') {
+      loadStats();
+    } else if (tabName === 'settings') {
+      loadHealth();
+    } else if (tabName === 'crawling') {
+      loadCrawlStatus();
+      loadCrawlProgress();
+    }
+  }
+
+  function adminLogin() {
+    const modal = document.getElementById('adminLoginModal');
+    const input = document.getElementById('adminPasswordInput');
+    const error = document.getElementById('adminLoginError');
+    error.style.display = 'none';
+    error.textContent = '';
+    input.value = '';
+    modal.style.display = 'flex';
+    setTimeout(() => input.focus(), 50);
+    return new Promise((resolve) => { adminLoginResolver = resolve; });
+  }
+
+  function closeAdminLogin(result) {
+    document.getElementById('adminLoginModal').style.display = 'none';
+    document.getElementById('adminPasswordInput').value = '';
+    if (adminLoginResolver) adminLoginResolver(Boolean(result));
+    adminLoginResolver = null;
+  }
+
+  document.getElementById('adminLoginForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = document.getElementById('adminPasswordInput');
+    const error = document.getElementById('adminLoginError');
+    const submit = document.getElementById('adminLoginSubmit');
+    error.style.display = 'none';
+    submit.disabled = true;
+    try {
+      const resp = await fetch('/api/admin/login', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password: input.value})
+      });
+      const data = await readApiJson(resp);
+      if (!resp.ok) {
+        if (resp.status === 429) {
+          const minutes = Math.max(1, Math.ceil(Number(data.retry_after || 0) / 60));
+          throw new Error(`로그인 시도가 잠겼습니다. 약 ${minutes}분 후 다시 시도하세요.`);
         }
-
-        function switchTab(tabName) {
-            if (tabName === 'settings' && !window.dashboardAdminAuthenticated) {
-                adminLogin().then((ok) => { if (ok) switchTab('settings'); });
-                return;
-            }
-            document.querySelectorAll('.primary-tab').forEach((button) => {
-                button.classList.toggle('active', button.dataset.tab === tabName);
-            });
-            document.querySelectorAll('.tab-panel').forEach((panel) => {
-                panel.classList.toggle('active', panel.id === `tab-${tabName}`);
-            });
-
-            if (tabName === 'statistics') {
-                loadStats();
-            } else if (tabName === 'settings') {
-                loadHealth();
-            } else if (tabName === 'crawling') {
-                loadCrawlStatus();
-                loadCrawlProgress();
-            }
+        if (resp.status === 401 && Number.isFinite(Number(data.remaining_attempts))) {
+          throw new Error(`비밀번호가 올바르지 않습니다. 남은 시도: ${data.remaining_attempts}회`);
         }
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+      window.dashboardAdminAuthenticated = true;
+      closeAdminLogin(true);
+    } catch (e) {
+      error.textContent = e.message === 'Admin login requires HTTPS or localhost'
+        ? '관리자 로그인은 localhost 또는 ngrok HTTPS 주소에서만 가능합니다.'
+        : e.message;
+      error.style.display = 'block';
+      input.select();
+    } finally {
+      submit.disabled = false;
+    }
+  });
 
-        function adminLogin() {
-            const modal = document.getElementById('adminLoginModal');
-            const input = document.getElementById('adminPasswordInput');
-            const error = document.getElementById('adminLoginError');
-            error.style.display = 'none';
-            error.textContent = '';
-            input.value = '';
-            modal.style.display = 'flex';
-            setTimeout(() => input.focus(), 50);
-            return new Promise((resolve) => { adminLoginResolver = resolve; });
-        }
+  async function loadHealth() {
+    const grid = document.getElementById('healthGrid');
+    const checkedAt = document.getElementById('healthCheckedAt');
+    grid.innerHTML = '<div class="loading">서비스 상태를 검사하는 중...</div>';
 
-        function closeAdminLogin(result) {
-            document.getElementById('adminLoginModal').style.display = 'none';
-            document.getElementById('adminPasswordInput').value = '';
-            if (adminLoginResolver) adminLoginResolver(Boolean(result));
-            adminLoginResolver = null;
-        }
+    try {
+      const resp = await fetch('/api/health');
+      const data = await readApiJson(resp);
+      if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
 
-        document.getElementById('adminLoginForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const input = document.getElementById('adminPasswordInput');
-            const error = document.getElementById('adminLoginError');
-            const submit = document.getElementById('adminLoginSubmit');
-            error.style.display = 'none';
-            submit.disabled = true;
-            try {
-                const resp = await fetch('/api/admin/login', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({password: input.value})
-                });
-                const data = await readApiJson(resp);
-                if (!resp.ok) {
-                    if (resp.status === 429) {
-                        const minutes = Math.max(1, Math.ceil(Number(data.retry_after || 0) / 60));
-                        throw new Error(`로그인 시도가 잠겼습니다. 약 ${minutes}분 후 다시 시도하세요.`);
-                    }
-                    if (resp.status === 401 && Number.isFinite(Number(data.remaining_attempts))) {
-                        throw new Error(`비밀번호가 올바르지 않습니다. 남은 시도: ${data.remaining_attempts}회`);
-                    }
-                    throw new Error(data.error || `HTTP ${resp.status}`);
-                }
-                window.dashboardAdminAuthenticated = true;
-                closeAdminLogin(true);
-            } catch (e) {
-                error.textContent = e.message === 'Admin login requires HTTPS or localhost'
-                    ? '관리자 로그인은 localhost 또는 ngrok HTTPS 주소에서만 가능합니다.'
-                    : e.message;
-                error.style.display = 'block';
-                input.select();
-            } finally {
-                submit.disabled = false;
-            }
+      const labels = {
+        healthy: 'Healthy',
+        unhealthy: 'Unhealthy',
+        not_configured: 'Not configured'
+      };
+      grid.innerHTML = (data.services || []).map((service) => `
+        <article class="health-card">
+          <div>
+            <h3>
+              ${escapeHtml(service.name)}
+              <span class="health-status ${escapeHtml(service.status)}">
+                ${escapeHtml(labels[service.status] || service.status)}
+              </span>
+            </h3>
+            <div class="health-detail">${escapeHtml(service.detail || '')}</div>
+          </div>
+          <div class="health-actions">
+            ${service.log_key ? `<button type="button" class="health-log-btn" onclick="openServiceLog('${escapeHtml(service.log_key)}', '${escapeHtml(service.name)}')">📋 로그 보기</button>` : ''}
+            ${service.restart_key ? `<button type="button" class="health-restart" onclick="restartService('${escapeHtml(service.restart_key)}', this)">서비스 재시작</button>` : ''}
+          </div>
+        </article>
+      `).join('') || '<div class="no-results">검사할 서비스가 없습니다.</div>';
+      checkedAt.textContent = `마지막 검사: ${formatDateTime(data.checked_at)}`;
+    } catch (e) {
+      grid.innerHTML = `<div class="no-results">Health Check 실패: ${escapeHtml(e.message)}</div>`;
+      checkedAt.textContent = '검사 실패';
+    }
+  }
+
+  async function openServiceLog(serviceKey, labelText = '') {
+    if (!serviceKey) return;
+    activeLogService = serviceKey;
+    if (labelText) activeLogLabel = labelText;
+    const panel = document.getElementById('serviceLogPanel');
+    const title = document.getElementById('serviceLogTitle');
+    const body = document.getElementById('serviceLogBody');
+    panel.style.display = 'block';
+    title.textContent = `서비스 로그 · ${activeLogLabel || serviceKey} (${activeLogLines}줄)`;
+    body.textContent = '로그를 불러오는 중...';
+
+    try {
+      const params = new URLSearchParams({
+        service: activeLogService,
+        lines: String(activeLogLines),
+      });
+      const resp = await fetch(`/api/admin/service-logs?${params}`);
+      const data = await readApiJson(resp);
+      if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+      title.textContent = `서비스 로그 · ${activeLogLabel || serviceKey} (${activeLogLines}줄 · ${formatDateTime(data.fetched_at)})`;
+      body.textContent = data.logs || '표시할 로그가 없습니다.';
+      body.scrollTop = body.scrollHeight;
+    } catch (e) {
+      body.textContent = `로그 조회 실패: ${e.message}`;
+    }
+  }
+
+  function changeServiceLogLines(lines) {
+    activeLogLines = lines;
+    refreshServiceLog();
+  }
+
+  function refreshServiceLog() {
+    openServiceLog(activeLogService, activeLogLabel);
+  }
+
+  function closeServiceLog() {
+    document.getElementById('serviceLogPanel').style.display = 'none';
+  }
+
+  async function restartService(service, button) {
+    if (!confirm(`${service} 서비스를 재시작하시겠습니까?`)) return;
+    button.disabled = true;
+    try {
+      const resp = await fetch('/api/admin/restart-service', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({service})
+      });
+      const data = await readApiJson(resp);
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      alert('재시작을 예약했습니다. 잠시 후 상태를 다시 확인하세요.');
+      if (service !== 'dashboard') setTimeout(loadHealth, 5000);
+    } catch (e) {
+      alert(`재시작 실패: ${e.message}`);
+      button.disabled = false;
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const resp = await fetch('/api/stats');
+      const data = await readApiJson(resp);
+
+      document.getElementById('totalPosts').textContent = Number(data.total_posts || 0).toLocaleString();
+      document.getElementById('recentPosts').textContent = Number(data.recent_posts || 0).toLocaleString();
+      document.getElementById('platformCount').textContent = (data.platform_stats || []).length;
+
+      const platformFilter = document.getElementById('platformFilter');
+      const selectedPlatform = platformFilter.value;
+      platformFilter.innerHTML = '<option value="">전체 플랫폼</option>';
+      (data.platform_stats || []).forEach(stat => {
+        const option = document.createElement('option');
+        option.value = stat.platform;
+        option.textContent = `${stat.platform} (${stat.count})`;
+        platformFilter.appendChild(option);
+      });
+      platformFilter.value = selectedPlatform;
+
+      drawChart(data.platform_stats || []);
+    } catch (e) {
+      console.error('통계 로드 실패:', e);
+    }
+  }
+
+  function drawChart(platformStats) {
+    const ctx = document.getElementById('platformChart');
+
+    if (platformChart) {
+      platformChart.destroy();
+    }
+
+    platformChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: platformStats.map(s => s.platform),
+        datasets: [{
+          label: '포스트 수',
+          data: platformStats.map(s => s.count),
+          backgroundColor: 'rgba(102, 126, 234, 0.8)',
+          borderColor: 'rgba(102, 126, 234, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: '플랫폼별 포스트 분포' }
+        },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+
+  async function loadPosts(page = 1) {
+    currentPage = page;
+    const search = document.getElementById('searchInput').value;
+    const platform = document.getElementById('platformFilter').value;
+
+    const params = new URLSearchParams({
+      page: page,
+      per_page: 20,
+      search: search,
+      platform: platform,
+      published_on: selectedDate,
+      hidden_only: hiddenPostsMode ? '1' : '0'
+    });
+
+    try {
+      document.getElementById('postsList').innerHTML = '<div class="loading">데이터를 불러오는 중...</div>';
+
+      const resp = await fetch(`/api/posts?${params}`);
+      const data = await readApiJson(resp);
+
+      renderPosts(data.posts || []);
+      renderPagination(data.page || 1, Math.ceil((data.total || 0) / (data.per_page || 20)));
+    } catch (e) {
+      console.error('포스트 로드 실패:', e);
+      document.getElementById('postsList').innerHTML = '<div class="no-results">데이터를 불러올 수 없습니다.</div>';
+    }
+  }
+
+  function switchView(mode) {
+    currentView = mode;
+    const isCalendar = mode === 'calendar';
+
+    document.getElementById('calendarPanel').style.display = isCalendar ? 'block' : 'none';
+    document.getElementById('postsList').style.display = isCalendar ? 'none' : 'block';
+    document.getElementById('pagination').style.display = isCalendar ? 'none' : 'flex';
+
+    document.getElementById('listModeBtn').classList.toggle('active', !isCalendar);
+    document.getElementById('calendarModeBtn').classList.toggle('active', isCalendar);
+
+    if (isCalendar) {
+      loadCalendar();
+    }
+  }
+
+  function toggleHiddenPosts() {
+    if (!window.dashboardAdminAuthenticated) {
+      adminLogin().then((ok) => { if (ok) toggleHiddenPosts(); });
+      return;
+    }
+    hiddenPostsMode = !hiddenPostsMode;
+    selectedDate = '';
+    document.getElementById('hiddenPostsToggleBtn').textContent = hiddenPostsMode
+      ? '↩ 일반 글 보기'
+      : '🙈 숨김 글 보기';
+    document.getElementById('hiddenPostsToggleBtn').classList.toggle('active', hiddenPostsMode);
+    if (currentView !== 'list') {
+      switchView('list');
+    }
+    loadPosts(1);
+  }
+
+  function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('platformFilter').value = '';
+    selectedDate = '';
+    hiddenPostsMode = false;
+
+    const hiddenBtn = document.getElementById('hiddenPostsToggleBtn');
+    if (hiddenBtn) {
+      hiddenBtn.textContent = '🙈 숨김 글 보기';
+      hiddenBtn.classList.remove('active');
+    }
+
+    loadDiscover();
+    if (currentView === 'calendar') {
+      loadCalendar();
+    } else {
+      loadPosts(1);
+    }
+  }
+
+  function renderCrawlStatus(data) {
+    const banner = document.getElementById('crawlStatusBanner');
+    const text = document.getElementById('crawlStatusText');
+    const link = document.getElementById('crawlStatusLink');
+    const actionBtn = document.getElementById('crawlActionBtn');
+
+    if (data && data.running) {
+      banner.classList.add('running');
+      text.textContent = '크롤링이 진행 중입니다. 리스트는 계속 확인할 수 있습니다.';
+      actionBtn.disabled = true;
+
+      if (data.html_url) {
+        link.href = data.html_url;
+        link.style.display = 'inline';
+      } else {
+        link.style.display = 'none';
+      }
+      ensureCrawlProgressPolling(true);
+      return;
+    }
+
+    banner.classList.remove('running');
+    text.textContent = '';
+    link.style.display = 'none';
+    actionBtn.disabled = false;
+    ensureCrawlProgressPolling(false);
+  }
+
+  function ensureCrawlProgressPolling(shouldRun) {
+    if (shouldRun) {
+      if (!crawlProgressTimer) {
+        crawlProgressTimer = setInterval(loadCrawlProgress, 5000);
+      }
+      loadCrawlProgress();
+      return;
+    }
+    if (crawlProgressTimer) {
+      clearInterval(crawlProgressTimer);
+      crawlProgressTimer = null;
+    }
+  }
+
+  function setCrawlProgressCollapsed(collapsed, persist = true) {
+    const panel = document.getElementById('crawlProgressPanel');
+    const button = document.getElementById('crawlProgressToggle');
+    panel.classList.toggle('collapsed', collapsed);
+    button.textContent = collapsed ? '펼치기' : '접기';
+    button.setAttribute('aria-expanded', String(!collapsed));
+    if (persist) {
+      localStorage.setItem('crawlProgressCollapsed', String(collapsed));
+    }
+  }
+
+  function toggleCrawlProgress() {
+    const panel = document.getElementById('crawlProgressPanel');
+    setCrawlProgressCollapsed(!panel.classList.contains('collapsed'));
+  }
+
+  function renderCrawlProgress(data) {
+    const panel = document.getElementById('crawlProgressPanel');
+    const title = document.getElementById('crawlProgressTitle');
+    const log = document.getElementById('crawlProgressLog');
+
+    if (localStorage.getItem('crawlProgressCollapsed') === 'true') {
+      setCrawlProgressCollapsed(true, false);
+    }
+
+    if (!data || data.error) {
+      panel.classList.add('active');
+      title.textContent = '크롤링 진행 상황';
+      log.textContent = data && data.error ? `조회 실패: ${data.error}` : '진행 정보를 가져올 수 없습니다.';
+      return;
+    }
+
+    const runStatus = data.status || 'unknown';
+    const runConclusion = data.conclusion || '-';
+    const running = Boolean(data.running);
+    panel.classList.add('active');
+    title.textContent = running ? '크롤링 진행 상황 (실시간)' : '최근 크롤링 실행 결과';
+
+    const lines = [];
+    lines.push(`워크플로 상태: ${runStatus} / 결론: ${runConclusion}`);
+    if (data.created_at) lines.push(`시작: ${data.created_at}`);
+    if (data.updated_at) lines.push(`업데이트: ${data.updated_at}`);
+
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    if (jobs.length > 0) {
+      lines.push('');
+      lines.push('[Jobs]');
+      jobs.forEach((job) => {
+        lines.push(`- ${job.name} (${job.status || '-'} / ${job.conclusion || '-'})`);
+        const steps = Array.isArray(job.steps) ? job.steps : [];
+        steps.forEach((step) => {
+          lines.push(`  · ${step.number}. ${step.name} (${step.status || '-'} / ${step.conclusion || '-'})`);
         });
-
-        async function loadHealth() {
-            const grid = document.getElementById('healthGrid');
-            const checkedAt = document.getElementById('healthCheckedAt');
-            grid.innerHTML = '<div class="loading">서비스 상태를 검사하는 중...</div>';
-
-            try {
-                const resp = await fetch('/api/health');
-                const data = await resp.json();
-                if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
-
-                const labels = {
-                    healthy: 'Healthy',
-                    unhealthy: 'Unhealthy',
-                    not_configured: 'Not configured'
-                };
-                grid.innerHTML = (data.services || []).map((service) => `
-                    <article class="health-card">
-                        <h3>
-                            ${escapeHtml(service.name)}
-                            <span class="health-status ${escapeHtml(service.status)}">
-                                ${escapeHtml(labels[service.status] || service.status)}
-                            </span>
-                        </h3>
-                        <div class="health-detail">${escapeHtml(service.detail || '')}</div>
-                        ${service.restart_key ? `<button class="health-restart" onclick="restartService('${escapeHtml(service.restart_key)}', this)">서비스 재시작</button>` : ''}
-                    </article>
-                `).join('') || '<div class="no-results">검사할 서비스가 없습니다.</div>';
-                checkedAt.textContent = `마지막 검사: ${formatDateTime(data.checked_at)}`;
-            } catch (e) {
-                grid.innerHTML = `<div class="no-results">Health Check 실패: ${escapeHtml(e.message)}</div>`;
-                checkedAt.textContent = '검사 실패';
-            }
-        }
-
-        async function restartService(service, button) {
-            if (!confirm(`${service} 서비스를 재시작하시겠습니까?`)) return;
-            button.disabled = true;
-            try {
-                const resp = await fetch('/api/admin/restart-service', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({service})
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-                alert('재시작을 예약했습니다. 잠시 후 상태를 다시 확인하세요.');
-                if (service !== 'dashboard') setTimeout(loadHealth, 5000);
-            } catch (e) {
-                alert(`재시작 실패: ${e.message}`);
-                button.disabled = false;
-            }
-        }
-        
-        // 통계 로드
-        async function loadStats() {
-            try {
-                const resp = await fetch('/api/stats');
-                const data = await resp.json();
-                
-                document.getElementById('totalPosts').textContent = data.total_posts.toLocaleString();
-                document.getElementById('recentPosts').textContent = data.recent_posts.toLocaleString();
-                document.getElementById('platformCount').textContent = data.platform_stats.length;
-                
-                // 플랫폼 필터 채우기
-                const platformFilter = document.getElementById('platformFilter');
-                const selectedPlatform = platformFilter.value;
-                platformFilter.innerHTML = '<option value="">전체 플랫폼</option>';
-                data.platform_stats.forEach(stat => {
-                    const option = document.createElement('option');
-                    option.value = stat.platform;
-                    option.textContent = `${stat.platform} (${stat.count})`;
-                    platformFilter.appendChild(option);
-                });
-                platformFilter.value = selectedPlatform;
-                
-                // 차트 그리기
-                drawChart(data.platform_stats);
-            } catch (e) {
-                console.error('통계 로드 실패:', e);
-            }
-        }
-        
-        // 차트 그리기
-        function drawChart(platformStats) {
-            const ctx = document.getElementById('platformChart');
-            
-            if (platformChart) {
-                platformChart.destroy();
-            }
-            
-            platformChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: platformStats.map(s => s.platform),
-                    datasets: [{
-                        label: '포스트 수',
-                        data: platformStats.map(s => s.count),
-                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                        borderColor: 'rgba(102, 126, 234, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        title: {
-                            display: true,
-                            text: '플랫폼별 포스트 분포'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
-        }
-        
-        // 포스트 목록 로드
-        async function loadPosts(page = 1) {
-            currentPage = page;
-            const search = document.getElementById('searchInput').value;
-            const platform = document.getElementById('platformFilter').value;
-            
-            const params = new URLSearchParams({
-                page: page,
-                per_page: 20,
-                search: search,
-                platform: platform,
-                published_on: selectedDate,
-                hidden_only: hiddenPostsMode ? '1' : '0'
-            });
-            
-            try {
-                document.getElementById('postsList').innerHTML = '<div class="loading">데이터를 불러오는 중...</div>';
-                
-                const resp = await fetch(`/api/posts?${params}`);
-                const data = await resp.json();
-                
-                renderPosts(data.posts);
-                renderPagination(data.page, Math.ceil(data.total / data.per_page));
-            } catch (e) {
-                console.error('포스트 로드 실패:', e);
-                document.getElementById('postsList').innerHTML = '<div class="no-results">데이터를 불러올 수 없습니다.</div>';
-            }
-        }
-
-        function switchView(mode) {
-            currentView = mode;
-            const isCalendar = mode === 'calendar';
-
-            document.getElementById('calendarPanel').style.display = isCalendar ? 'block' : 'none';
-            document.getElementById('postsList').style.display = isCalendar ? 'none' : 'block';
-            document.getElementById('pagination').style.display = isCalendar ? 'none' : 'flex';
-
-            document.getElementById('listModeBtn').classList.toggle('active', !isCalendar);
-            document.getElementById('calendarModeBtn').classList.toggle('active', isCalendar);
-
-            if (isCalendar) {
-                loadCalendar();
-            }
-        }
-
-        function toggleHiddenPosts() {
-            if (!window.dashboardAdminAuthenticated) {
-                adminLogin().then((ok) => { if (ok) toggleHiddenPosts(); });
-                return;
-            }
-            hiddenPostsMode = !hiddenPostsMode;
-            selectedDate = '';
-            document.getElementById('hiddenPostsToggleBtn').textContent = hiddenPostsMode
-                ? '↩ 일반 글 보기'
-                : '🙈 숨김 글 보기';
-            document.getElementById('hiddenPostsToggleBtn').classList.toggle('active', hiddenPostsMode);
-            if (currentView !== 'list') {
-                switchView('list');
-            }
-            loadPosts(1);
-        }
-
-        function renderCrawlStatus(data) {
-            const banner = document.getElementById('crawlStatusBanner');
-            const text = document.getElementById('crawlStatusText');
-            const link = document.getElementById('crawlStatusLink');
-            const actionBtn = document.getElementById('crawlActionBtn');
-
-            if (data && data.running) {
-                banner.classList.add('running');
-                text.textContent = '크롤링이 진행 중입니다. 리스트는 계속 확인할 수 있습니다.';
-                actionBtn.disabled = true;
-
-                if (data.html_url) {
-                    link.href = data.html_url;
-                    link.style.display = 'inline';
-                } else {
-                    link.style.display = 'none';
-                }
-                ensureCrawlProgressPolling(true);
-                return;
-            }
-
-            banner.classList.remove('running');
-            text.textContent = '';
-            link.style.display = 'none';
-            actionBtn.disabled = false;
-            ensureCrawlProgressPolling(false);
-        }
-
-        function ensureCrawlProgressPolling(shouldRun) {
-            if (shouldRun) {
-                if (!crawlProgressTimer) {
-                    crawlProgressTimer = setInterval(loadCrawlProgress, 5000);
-                }
-                loadCrawlProgress();
-                return;
-            }
-            if (crawlProgressTimer) {
-                clearInterval(crawlProgressTimer);
-                crawlProgressTimer = null;
-            }
-        }
-
-        function setCrawlProgressCollapsed(collapsed, persist = true) {
-            const panel = document.getElementById('crawlProgressPanel');
-            const button = document.getElementById('crawlProgressToggle');
-            panel.classList.toggle('collapsed', collapsed);
-            button.textContent = collapsed ? '펼치기' : '접기';
-            button.setAttribute('aria-expanded', String(!collapsed));
-            if (persist) {
-                localStorage.setItem('crawlProgressCollapsed', String(collapsed));
-            }
-        }
-
-        function toggleCrawlProgress() {
-            const panel = document.getElementById('crawlProgressPanel');
-            setCrawlProgressCollapsed(!panel.classList.contains('collapsed'));
-        }
-
-        function renderCrawlProgress(data) {
-            const panel = document.getElementById('crawlProgressPanel');
-            const title = document.getElementById('crawlProgressTitle');
-            const log = document.getElementById('crawlProgressLog');
-
-            if (localStorage.getItem('crawlProgressCollapsed') === 'true') {
-                setCrawlProgressCollapsed(true, false);
-            }
-
-            if (!data || data.error) {
-                panel.classList.add('active');
-                title.textContent = '크롤링 진행 상황';
-                log.textContent = data && data.error ? `조회 실패: ${data.error}` : '진행 정보를 가져올 수 없습니다.';
-                return;
-            }
-
-            const runStatus = data.status || 'unknown';
-            const runConclusion = data.conclusion || '-';
-            const running = Boolean(data.running);
-            panel.classList.add('active');
-            title.textContent = running ? '크롤링 진행 상황 (실시간)' : '최근 크롤링 실행 결과';
-
-            const lines = [];
-            lines.push(`워크플로 상태: ${runStatus} / 결론: ${runConclusion}`);
-            if (data.created_at) lines.push(`시작: ${data.created_at}`);
-            if (data.updated_at) lines.push(`업데이트: ${data.updated_at}`);
-
-            const jobs = Array.isArray(data.jobs) ? data.jobs : [];
-            if (jobs.length > 0) {
-                lines.push('');
-                lines.push('[Jobs]');
-                jobs.forEach((job) => {
-                    lines.push(`- ${job.name} (${job.status || '-'} / ${job.conclusion || '-'})`);
-                    const steps = Array.isArray(job.steps) ? job.steps : [];
-                    steps.forEach((step) => {
-                        lines.push(`  · ${step.number}. ${step.name} (${step.status || '-'} / ${step.conclusion || '-'})`);
-                    });
-                });
-            } else {
-                lines.push('');
-                lines.push('job 정보가 아직 없습니다.');
-            }
-
-            log.textContent = lines.join('\n');
-            log.scrollTop = 0;
-        }
-
-        async function loadCrawlProgress() {
-            try {
-                const resp = await fetch('/api/crawl-progress');
-                const data = await resp.json();
-                renderCrawlProgress(data);
-                if (!data.running) {
-                    ensureCrawlProgressPolling(false);
-                }
-            } catch (e) {
-                renderCrawlProgress({ error: e.message });
-            }
-        }
-
-        async function loadCrawlStatus() {
-            try {
-                const resp = await fetch('/api/crawl-status');
-                const data = await resp.json();
-                renderCrawlStatus(data);
-            } catch (e) {
-                console.error('크롤링 상태 조회 실패:', e);
-                renderCrawlStatus(null);
-            }
-        }
-
-        function switchCalendarRange(range) {
-            calendarRange = range;
-            document.getElementById('monthRangeBtn').classList.toggle('active', range === 'month');
-            document.getElementById('weekRangeBtn').classList.toggle('active', range === 'week');
-            loadCalendar();
-        }
-
-        function moveCalendar(offset) {
-            if (calendarRange === 'month') {
-                calendarMonth += offset;
-                if (calendarMonth < 1) {
-                    calendarMonth = 12;
-                    calendarYear -= 1;
-                } else if (calendarMonth > 12) {
-                    calendarMonth = 1;
-                    calendarYear += 1;
-                }
-            } else {
-                const d = new Date(weekReferenceDate + 'T00:00:00');
-                d.setDate(d.getDate() + (offset * 7));
-                weekReferenceDate = formatYmd(d);
-            }
-            loadCalendar();
-        }
-
-        function goToCurrentPeriod() {
-            calendarYear = today.getFullYear();
-            calendarMonth = today.getMonth() + 1;
-            weekReferenceDate = formatYmd(today);
-            loadCalendar();
-        }
-
-        async function loadCalendar() {
-            const search = document.getElementById('searchInput').value;
-            const platform = document.getElementById('platformFilter').value;
-
-            try {
-                if (calendarRange === 'month') {
-                    const params = new URLSearchParams({
-                        year: calendarYear,
-                        month: calendarMonth,
-                        search: search,
-                        platform: platform
-                    });
-                    const resp = await fetch(`/api/calendar?${params}`);
-                    const data = await resp.json();
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-                    renderMonthCalendar(data.year, data.month, data.days || {});
-                } else {
-                    const params = new URLSearchParams({
-                        date: weekReferenceDate,
-                        search: search,
-                        platform: platform
-                    });
-                    const resp = await fetch(`/api/calendar/week?${params}`);
-                    const data = await resp.json();
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-                    weekReferenceDate = data.week_start;
-                    renderWeekCalendar(data.week_start, data.week_end, data.days || []);
-                }
-            } catch (e) {
-                console.error('캘린더 로드 실패:', e);
-                document.getElementById('calendarGrid').innerHTML = '<div class="no-results" style="grid-column: 1 / -1;">달력 데이터를 불러올 수 없습니다.</div>';
-            }
-        }
-
-        function renderMonthCalendar(year, month, daysMap) {
-            const title = document.getElementById('calendarTitle');
-            const grid = document.getElementById('calendarGrid');
-            title.textContent = `${year}년 ${month}월`;
-
-            const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-            let html = weekdays.map(d => `<div class="calendar-weekday">${d}</div>`).join('');
-
-            const firstDay = new Date(year, month - 1, 1).getDay();
-            const daysInMonth = new Date(year, month, 0).getDate();
-
-            for (let i = 0; i < firstDay; i++) {
-                html += '<div class="calendar-day empty"></div>';
-            }
-
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dayStr = String(day).padStart(2, '0');
-                const monthStr = String(month).padStart(2, '0');
-                const dateKey = `${year}-${monthStr}-${dayStr}`;
-                const info = daysMap[dateKey] || { count: 0, titles: [] };
-                html += renderCalendarDayCell(String(day), dateKey, info);
-            }
-
-            grid.innerHTML = html;
-        }
-
-        function renderWeekCalendar(weekStart, weekEnd, days) {
-            const title = document.getElementById('calendarTitle');
-            const grid = document.getElementById('calendarGrid');
-            title.textContent = `${weekStart} ~ ${weekEnd}`;
-
-            const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-            let html = weekdays.map(d => `<div class="calendar-weekday">${d}</div>`).join('');
-
-            days.forEach((dayInfo) => {
-                const d = new Date(dayInfo.date + 'T00:00:00');
-                html += renderCalendarDayCell(`${d.getMonth() + 1}/${d.getDate()}`, dayInfo.date, dayInfo || { count: 0, titles: [] });
-            });
-
-            grid.innerHTML = html;
-        }
-
-        function renderCalendarDayCell(label, dateKey, info) {
-            const count = Number(info.count || 0);
-            const selectedClass = selectedDate === dateKey ? 'selected' : '';
-            const titles = Array.isArray(info.titles) ? info.titles.slice(0, 3) : [];
-            const titleHtml = titles.length > 0
-                ? `<ul class="calendar-day-titles">${titles.map(item => `<li class="calendar-day-title"><a href="${escapeHtml(item.url || '#')}" target="_blank">${escapeHtml(truncate(item.title || '', 22))}</a></li>`).join('')}</ul>`
-                : '';
-
-            return `
-                <button class="calendar-day ${selectedClass}" onclick="selectCalendarDate('${dateKey}')">
-                    <span class="calendar-day-number">${label}</span>
-                    ${count > 0 ? `<span class="calendar-day-count">${count}개</span>` : ''}
-                    ${titleHtml}
-                </button>
-            `;
-        }
-
-        function selectCalendarDate(dateKey) {
-            selectedDate = dateKey;
-            switchView('list');
-            loadPosts(1);
-        }
-
-        async function loadDiscover() {
-            const search = document.getElementById('searchInput').value;
-            const platform = document.getElementById('platformFilter').value;
-            const params = new URLSearchParams({ search, platform });
-
-            try {
-                const resp = await fetch(`/api/discover?${params}`);
-                const data = await resp.json();
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-                renderDiscoverList('todayHistoryList', data.today_history || []);
-                renderDiscoverList('randomList', data.random_posts || []);
-            } catch (e) {
-                console.error('추천 로드 실패:', e);
-                document.getElementById('todayHistoryList').innerHTML = '<li>불러오기 실패</li>';
-                document.getElementById('randomList').innerHTML = '<li>불러오기 실패</li>';
-            }
-        }
-
-        async function loadNextRandomPost() {
-            const randomList = document.getElementById('randomList');
-
-            // 현재 화면에 남아 있는 글의 ID를 수집
-            const excludeIds = Array.from(
-                randomList.querySelectorAll('.discover-item')
-            )
-                .map(item => item.dataset.postId)
-                .filter(id => id && id !== '0');
-
-            const search = document.getElementById('searchInput').value;
-            const platform = document.getElementById('platformFilter').value;
-
-            const params = new URLSearchParams({
-                search,
-                platform,
-                exclude_ids: excludeIds.join(','),
-                random_limit: '1'
-            });
-
-            try {
-                const resp = await fetch(`/api/discover?${params}`);
-                const data = await resp.json();
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                const newPost = data.random_posts?.[0];
-
-                if (newPost) {
-                    // 새 글 하나만 기존 목록 마지막에 추가
-                    randomList.insertAdjacentHTML(
-                        'beforeend',
-                        renderDiscoverItem(newPost)
-                    );
-                } else if (randomList.querySelectorAll('.discover-item').length === 0) {
-                    randomList.innerHTML = '<li>항목 없음</li>';
-                }
-            } catch (e) {
-                console.error('새 랜덤 글 로드 실패:', e);
-            }
-        }
-
-        function renderDiscoverItem(post, isHistory = false) {
-            return `
-                <li class="discover-item" data-post-id="${Number(post.id) || 0}">
-                    <div class="discover-thumb">
-                        ${renderPostThumbnail(post.representative_image, post.title)}
-                    </div>
-                    <div class="discover-copy">
-                        <a class="discover-title"
-                        href="${escapeHtml(post.url || '#')}"
-                        target="_blank"
-                        title="${escapeHtml(post.title || '(제목 없음)')}">
-                            ${escapeHtml(post.title || '(제목 없음)')}
-                        </a>
-                        <span class="discover-meta">
-                            ${isHistory
-                                ? '1년 전 오늘'
-                                : `${escapeHtml(post.platform || '')} · ${formatDate(post.published_date || post.created_at)}`}
-                        </span>
-                        <div class="post-actions">
-                            <button class="post-hide-btn"
-                                    onclick="togglePostHide(${Number(post.id) || 0}, this)"
-                                    title="이 추천 글 숨기기">
-                                🚫 숨김
-                            </button>
-                        </div>
-                    </div>
-                </li>
-            `;
-        }
-
-        function renderDiscoverList(targetId, posts) {
-            const el = document.getElementById(targetId);
-            const maxItems = targetId === 'randomList' ? 3 : 1;
-            const isHistory = targetId === 'todayHistoryList';
-
-            if (!posts || posts.length === 0) {
-                el.innerHTML = '<li>항목 없음</li>';
-                return;
-            }
-
-            el.innerHTML = posts.slice(0, maxItems).map(post => renderDiscoverItem(post, isHistory)).join('');
-        }
-        
-        // 포스트 렌더링
-        function renderPosts(posts) {
-            const container = document.getElementById('postsList');
-            
-            if (posts.length === 0) {
-                container.innerHTML = `<div class="no-results">${hiddenPostsMode ? '숨김 처리된 글이 없습니다.' : '검색 결과가 없습니다.'}</div>`;
-                return;
-            }
-            
-            container.innerHTML = posts.map(post => `
-                <div class="post-item" id="post-${post.id}">
-                    <div class="post-layout">
-                        <div class="post-thumb">${renderPostThumbnail(post.representative_image, post.title)}</div>
-                        <div class="post-content">
-                            <div class="post-header">
-                                <span class="platform-badge">${escapeHtml(post.platform)}</span>
-                                <span class="post-meta">${escapeHtml(post.media_name)}</span>
-                            </div>
-                            <div class="post-title">
-                                <a href="${escapeHtml(post.url)}" target="_blank">${escapeHtml(post.title)}</a>
-                            </div>
-                            <div class="post-meta">
-                                📅 ${formatDate(post.published_date)} | 💾 ${formatDate(post.created_at)}
-                            </div>
-                            ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
-                            <div class="post-actions">
-                                <button class="post-hide-btn" onclick="togglePostHide(${post.id}, this)" title="포스트 숨기기/표시하기">${hiddenPostsMode ? '↩ 표시' : '🚫 숨김'}</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function renderPostThumbnail(imageUrl, title) {
-            if (!imageUrl) {
-                return 'No Image';
-            }
-
-            const safeUrl = escapeHtml(imageUrl);
-            const safeTitle = escapeHtml(title || 'thumbnail');
-            return `<img src="${safeUrl}" alt="${safeTitle}" onerror="this.remove(); this.parentElement.textContent='No Image';">`;
-        }
-        
-        // 페이지네이션 렌더링
-        function renderPagination(currentPage, totalPages) {
-            const container = document.getElementById('pagination');
-            
-            if (totalPages <= 1) {
-                container.innerHTML = '';
-                return;
-            }
-            
-            let html = '';
-            
-            if (currentPage > 1) {
-                html += `<button onclick="loadPosts(${currentPage - 1})">← 이전</button>`;
-            }
-            
-            html += `<button disabled>${currentPage} / ${totalPages}</button>`;
-            
-            if (currentPage < totalPages) {
-                html += `<button onclick="loadPosts(${currentPage + 1})">다음 →</button>`;
-            }
-            
-            container.innerHTML = html;
-        }
-        
-        // 검색
-        function searchPosts() {
-            if (currentView === 'calendar') {
-                loadCalendar();
-                return;
-            }
-            loadPosts(1);
-        }
-        
-        // 크롤링 모달
-        function showCrawlModal() {
-            const modal = document.getElementById('crawlModal');
-            modal.style.display = 'flex';
-            setTimeout(() => document.getElementById('crawlUrlInput').focus(), 50);
-        }
-
-        function closeCrawlModal() {
-            document.getElementById('crawlModal').style.display = 'none';
-            document.getElementById('crawlUrlInput').value = '';
-        }
-
-        // 크롤링 트리거
-        async function triggerCrawl() {
-            const urlInput = document.getElementById('crawlUrlInput');
-            const targetUrl = urlInput ? urlInput.value.trim() : '';
-            const confirmMsg = targetUrl
-                ? `아래 URL을 크롤링하시겠습니까?\n\n${targetUrl}`
-                : '전체 크롤링을 시작하시겠습니까? (GitHub Actions 워크플로가 실행됩니다)';
-
-            if (!confirm(confirmMsg)) return;
-            closeCrawlModal();
-
-            try {
-                const body = targetUrl ? JSON.stringify({ url: targetUrl }) : '{}';
-                const resp = await fetch('/api/trigger-crawl', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body,
-                });
-                const data = await resp.json();
-
-                if (data.success) {
-                    const panel = document.getElementById('crawlProgressPanel');
-                    const title = document.getElementById('crawlProgressTitle');
-                    const log = document.getElementById('crawlProgressLog');
-                    panel.classList.add('active');
-                    setCrawlProgressCollapsed(false);
-                    title.textContent = '크롤링 진행 상황 (실시간)';
-                    log.textContent = `✅ ${data.message}\n실시간 상태를 불러오는 중...`;
-                    renderCrawlStatus({ running: true });
-                    loadCrawlStatus();
-                    ensureCrawlProgressPolling(true);
-                } else {
-                    alert('❌ ' + (data.error || '실패'));
-                }
-            } catch (e) {
-                alert('❌ 요청 실패: ' + e.message);
-            }
-        }
-
-        function appendChatMessage(role, text) {
-            const container = document.getElementById('chatbotMessages');
-            const bubble = document.createElement('div');
-            bubble.className = `chat-bubble ${role}`;
-            bubble.textContent = text;
-            container.appendChild(bubble);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        async function sendChatMessage() {
-            const input = document.getElementById('chatbotInput');
-            const button = document.getElementById('chatbotSendBtn');
-            const message = (input.value || '').trim();
-            if (!message) return;
-
-            appendChatMessage('user', message);
-            input.value = '';
-            button.disabled = true;
-
-            try {
-                const resp = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message })
-                });
-                const data = await resp.json();
-                if (data.success) {
-                    appendChatMessage('bot', data.reply || '✅ 완료 (출력 없음)');
-                } else {
-                    appendChatMessage('bot', `❌ ${data.error || '실패'}`);
-                }
-            } catch (e) {
-                appendChatMessage('bot', `❌ 요청 실패: ${e.message}`);
-            } finally {
-                button.disabled = false;
-                input.focus();
-            }
-        }
-        
-        // 포스트 숨김 토글
-        async function togglePostHide(postId, buttonEl) {
-            try {
-                const resp = await fetch('/api/toggle-hide', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: postId })
-                });
-                const data = await resp.json();
-                if (data.success) {
-                    const discoverItem = buttonEl.closest('.discover-item');
-
-                    if (discoverItem && data.is_hidden) {
-                        const randomList = document.getElementById('randomList');
-
-                        if (randomList.contains(discoverItem)) {
-                            // 랜덤 추천 3개 중 숨긴 카드 하나만 제거
-                            discoverItem.remove();
-
-                            // 남은 카드 2개는 유지하고 새 글 하나만 추가
-                            await loadNextRandomPost();
-                        } else {
-                            // 1년 전 오늘 목록은 기존 방식 유지
-                            discoverItem.remove();
-                            loadDiscover();
-                        }
-
-                        return;
-                    }
-
-                    if (hiddenPostsMode && !data.is_hidden) {
-                        const hiddenPostItem = document.getElementById(`post-${postId}`);
-                        if (hiddenPostItem) hiddenPostItem.remove();
-                        loadPosts(currentPage);
-                        return;
-                    }
-
-                    // 포스트 아이템을 부드럽게 사라지게 함
-                    const postItem = document.getElementById(`post-${postId}`);
-                    if (postItem) {
-                        postItem.style.opacity = '0.5';
-                        postItem.style.textDecoration = 'line-through';
-                        buttonEl.textContent = data.is_hidden ? '✓ 숨김됨' : '🚫 숨김';
-                        buttonEl.disabled = true;
-                        setTimeout(() => {
-                            postItem.style.transition = 'opacity 0.3s';
-                            postItem.style.opacity = '0.3';
-                        }, 300);
-                    }
-                } else {
-                    alert(`오류: ${data.error || '실패'}`);
-                }
-            } catch (e) {
-                alert(`요청 실패: ${e.message}`);
-            }
-        }
-        
-        // 유틸리티 함수
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text || '';
-            return div.innerHTML;
-        }
-        
-        function formatDate(dateStr) {
-            if (!dateStr) return '-';
-            const d = new Date(dateStr);
-            return d.toLocaleDateString('ko-KR');
-        }
-
-        function formatDateTime(dateStr) {
-            if (!dateStr) return '-';
-            const d = new Date(dateStr);
-            return d.toLocaleString('ko-KR');
-        }
-        
-        function truncate(text, length) {
-            if (!text) return '';
-            return text.length > length ? text.substring(0, length) + '...' : text;
-        }
-
-        function formatYmd(dateObj) {
-            const y = dateObj.getFullYear();
-            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const d = String(dateObj.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
-        }
-        
-        // Enter 키 검색
-        document.getElementById('searchInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                searchPosts();
-            }
+      });
+    } else {
+      lines.push('');
+      lines.push('job 정보가 아직 없습니다.');
+    }
+
+    log.textContent = lines.join('\n');
+    log.scrollTop = 0;
+  }
+
+  async function loadCrawlProgress() {
+    try {
+      const resp = await fetch('/api/crawl-progress');
+      const data = await readApiJson(resp);
+      renderCrawlProgress(data);
+      if (!data.running) {
+        ensureCrawlProgressPolling(false);
+      }
+    } catch (e) {
+      renderCrawlProgress({ error: e.message });
+    }
+  }
+
+  async function loadCrawlStatus() {
+    try {
+      const resp = await fetch('/api/crawl-status');
+      const data = await readApiJson(resp);
+      renderCrawlStatus(data);
+    } catch (e) {
+      console.error('크롤링 상태 조회 실패:', e);
+      renderCrawlStatus(null);
+    }
+  }
+
+  function switchCalendarRange(range) {
+    calendarRange = range;
+    document.getElementById('monthRangeBtn').classList.toggle('active', range === 'month');
+    document.getElementById('weekRangeBtn').classList.toggle('active', range === 'week');
+    loadCalendar();
+  }
+
+  function moveCalendar(offset) {
+    if (calendarRange === 'month') {
+      calendarMonth += offset;
+      if (calendarMonth < 1) {
+        calendarMonth = 12;
+        calendarYear -= 1;
+      } else if (calendarMonth > 12) {
+        calendarMonth = 1;
+        calendarYear += 1;
+      }
+    } else {
+      const d = new Date(weekReferenceDate + 'T00:00:00');
+      d.setDate(d.getDate() + (offset * 7));
+      weekReferenceDate = formatYmd(d);
+    }
+    loadCalendar();
+  }
+
+  function goToCurrentPeriod() {
+    calendarYear = today.getFullYear();
+    calendarMonth = today.getMonth() + 1;
+    weekReferenceDate = formatYmd(today);
+    loadCalendar();
+  }
+
+  async function loadCalendar() {
+    const search = document.getElementById('searchInput').value;
+    const platform = document.getElementById('platformFilter').value;
+
+    try {
+      if (calendarRange === 'month') {
+        const params = new URLSearchParams({
+          year: calendarYear,
+          month: calendarMonth,
+          search: search,
+          platform: platform
         });
+        const resp = await fetch(`/api/calendar?${params}`);
+        const data = await readApiJson(resp);
+        if (data.error) throw new Error(data.error);
+        renderMonthCalendar(data.year, data.month, data.days || {});
+      } else {
+        const params = new URLSearchParams({
+          date: weekReferenceDate,
+          search: search,
+          platform: platform
+        });
+        const resp = await fetch(`/api/calendar/week?${params}`);
+        const data = await readApiJson(resp);
+        if (data.error) throw new Error(data.error);
+        weekReferenceDate = data.week_start;
+        renderWeekCalendar(data.week_start, data.week_end, data.days || []);
+      }
+    } catch (e) {
+      console.error('캘린더 로드 실패:', e);
+      document.getElementById('calendarGrid').innerHTML = '<div class="no-results" style="grid-column: 1 / -1;">달력 데이터를 불러올 수 없습니다.</div>';
+    }
+  }
 
-        // 초기 로드
-        loadStats();
-        setCrawlProgressCollapsed(localStorage.getItem('crawlProgressCollapsed') === 'true', false);
-        switchTab('contents');
-        switchView('list');
-        loadPosts(1);
+  function renderMonthCalendar(year, month, daysMap) {
+    const title = document.getElementById('calendarTitle');
+    const grid = document.getElementById('calendarGrid');
+    title.textContent = `${year}년 ${month}월`;
+
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    let html = weekdays.map(d => `<div class="calendar-weekday">${d}</div>`).join('');
+
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    for (let i = 0; i < firstDay; i++) {
+      html += '<div class="calendar-day empty"></div>';
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayStr = String(day).padStart(2, '0');
+      const monthStr = String(month).padStart(2, '0');
+      const dateKey = `${year}-${monthStr}-${dayStr}`;
+      const info = daysMap[dateKey] || { count: 0, titles: [] };
+      html += renderCalendarDayCell(String(day), dateKey, info);
+    }
+
+    grid.innerHTML = html;
+  }
+
+  function renderWeekCalendar(weekStart, weekEnd, days) {
+    const title = document.getElementById('calendarTitle');
+    const grid = document.getElementById('calendarGrid');
+    title.textContent = `${weekStart} ~ ${weekEnd}`;
+
+    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    let html = weekdays.map(d => `<div class="calendar-weekday">${d}</div>`).join('');
+
+    days.forEach((dayInfo) => {
+      const d = new Date(dayInfo.date + 'T00:00:00');
+      html += renderCalendarDayCell(`${d.getMonth() + 1}/${d.getDate()}`, dayInfo.date, dayInfo || { count: 0, titles: [] });
+    });
+
+    grid.innerHTML = html;
+  }
+
+  function renderCalendarDayCell(label, dateKey, info) {
+    const count = Number(info.count || 0);
+    const selectedClass = selectedDate === dateKey ? 'selected' : '';
+    const titles = Array.isArray(info.titles) ? info.titles.slice(0, 3) : [];
+    const titleHtml = titles.length > 0
+      ? `<ul class="calendar-day-titles">${titles.map(item => `<li class="calendar-day-title"><a href="${escapeHtml(item.url || '#')}" target="_blank">${escapeHtml(truncate(item.title || '', 22))}</a></li>`).join('')}</ul>`
+      : '';
+
+    return `
+      <button class="calendar-day ${selectedClass}" onclick="selectCalendarDate('${dateKey}')">
+        <span class="calendar-day-number">${label}</span>
+        ${count > 0 ? `<span class="calendar-day-count">${count}개</span>` : ''}
+        ${titleHtml}
+      </button>
+    `;
+  }
+
+  function selectCalendarDate(dateKey) {
+    selectedDate = dateKey;
+    switchView('list');
+    loadPosts(1);
+  }
+
+  async function loadDiscover() {
+    const search = document.getElementById('searchInput').value;
+    const platform = document.getElementById('platformFilter').value;
+    const params = new URLSearchParams({ search, platform });
+
+    try {
+      const resp = await fetch(`/api/discover?${params}`);
+      const data = await readApiJson(resp);
+      if (data.error) throw new Error(data.error);
+      renderDiscoverList('todayHistoryList', data.today_history || []);
+      renderDiscoverList('randomList', data.random_posts || []);
+    } catch (e) {
+      console.error('추천 로드 실패:', e);
+      document.getElementById('todayHistoryList').innerHTML = '<li>불러오기 실패</li>';
+      document.getElementById('randomList').innerHTML = '<li>불러오기 실패</li>';
+    }
+  }
+
+  async function loadNextRandomPost() {
+    const randomList = document.getElementById('randomList');
+    const excludeIds = Array.from(randomList.querySelectorAll('.discover-item'))
+      .map(item => item.dataset.postId)
+      .filter(id => id && id !== '0');
+
+    const search = document.getElementById('searchInput').value;
+    const platform = document.getElementById('platformFilter').value;
+
+    const params = new URLSearchParams({
+      search,
+      platform,
+      exclude_ids: excludeIds.join(','),
+      random_limit: '1'
+    });
+
+    try {
+      const resp = await fetch(`/api/discover?${params}`);
+      const data = await readApiJson(resp);
+      if (data.error) throw new Error(data.error);
+
+      const newPost = data.random_posts?.[0];
+      if (newPost) {
+        randomList.insertAdjacentHTML('beforeend', renderDiscoverItem(newPost));
+      } else if (randomList.querySelectorAll('.discover-item').length === 0) {
+        randomList.innerHTML = '<li>항목 없음</li>';
+      }
+    } catch (e) {
+      console.error('새 랜덤 글 로드 실패:', e);
+    }
+  }
+
+  function renderDiscoverItem(post, isHistory = false) {
+    return `
+      <li class="discover-item" data-post-id="${Number(post.id) || 0}">
+        <div class="discover-thumb">
+          ${renderPostThumbnail(post.representative_image, post.title)}
+        </div>
+        <div class="discover-copy">
+          <a class="discover-title"
+             href="${escapeHtml(post.url || '#')}"
+             target="_blank"
+             title="${escapeHtml(post.title || '(제목 없음)')}">
+            ${escapeHtml(post.title || '(제목 없음)')}
+          </a>
+          <span class="discover-meta">
+            ${isHistory
+              ? '1년 전 오늘'
+              : `${escapeHtml(post.platform || '')} · ${formatDate(post.published_date || post.created_at)}`}
+          </span>
+          <div class="post-actions">
+            <button class="post-hide-btn"
+                    onclick="togglePostHide(${Number(post.id) || 0}, this)"
+                    title="이 추천 글 숨기기">
+              🚫 숨김
+            </button>
+          </div>
+        </div>
+      </li>
+    `;
+  }
+
+  function renderDiscoverList(targetId, posts) {
+    const el = document.getElementById(targetId);
+    const maxItems = targetId === 'randomList' ? 3 : 1;
+    const isHistory = targetId === 'todayHistoryList';
+
+    if (!posts || posts.length === 0) {
+      el.innerHTML = '<li>항목 없음</li>';
+      return;
+    }
+
+    el.innerHTML = posts.slice(0, maxItems).map(post => renderDiscoverItem(post, isHistory)).join('');
+  }
+
+  function renderPosts(posts) {
+    const container = document.getElementById('postsList');
+
+    if (posts.length === 0) {
+      container.innerHTML = `<div class="no-results">${hiddenPostsMode ? '숨김 처리된 글이 없습니다.' : '검색 결과가 없습니다.'}</div>`;
+      return;
+    }
+
+    container.innerHTML = posts.map(post => `
+      <div class="post-item" id="post-${post.id}">
+        <div class="post-layout">
+          <div class="post-thumb">${renderPostThumbnail(post.representative_image, post.title)}</div>
+          <div class="post-content">
+            <div class="post-header">
+              <span class="platform-badge">${escapeHtml(post.platform)}</span>
+              <span class="post-meta">${escapeHtml(post.media_name)}</span>
+            </div>
+            <div class="post-title">
+              <a href="${escapeHtml(post.url)}" target="_blank">${escapeHtml(post.title)}</a>
+            </div>
+            <div class="post-meta">
+              📅 ${formatDate(post.published_date)} | 💾 ${formatDate(post.created_at)}
+            </div>
+            ${post.summary ? `<div class="post-summary">${escapeHtml(truncate(post.summary, 200))}</div>` : ''}
+            <div class="post-actions">
+              <button class="post-hide-btn" onclick="togglePostHide(${post.id}, this)" title="포스트 숨기기/표시하기">${hiddenPostsMode ? '↩ 표시' : '🚫 숨김'}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderPostThumbnail(imageUrl, title) {
+    if (!imageUrl) {
+      return 'No Image';
+    }
+
+    const safeUrl = escapeHtml(imageUrl);
+    const safeTitle = escapeHtml(title || 'thumbnail');
+    return `<img src="${safeUrl}" alt="${safeTitle}" onerror="this.remove(); this.parentElement.textContent='No Image';">`;
+  }
+
+  function renderPagination(currentPage, totalPages) {
+    const container = document.getElementById('pagination');
+
+    if (totalPages <= 1) {
+      container.innerHTML = '';
+      return;
+    }
+
+    let html = '';
+
+    if (currentPage > 1) {
+      html += `<button onclick="loadPosts(${currentPage - 1})">← 이전</button>`;
+    }
+
+    html += `<button disabled>${currentPage} / ${totalPages}</button>`;
+
+    if (currentPage < totalPages) {
+      html += `<button onclick="loadPosts(${currentPage + 1})">다음 →</button>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function searchPosts() {
+    loadDiscover();
+    if (currentView === 'calendar') {
+      loadCalendar();
+      return;
+    }
+    loadPosts(1);
+  }
+
+  function showCrawlModal() {
+    const modal = document.getElementById('crawlModal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('crawlUrlInput').focus(), 50);
+  }
+
+  function closeCrawlModal() {
+    document.getElementById('crawlModal').style.display = 'none';
+    document.getElementById('crawlUrlInput').value = '';
+  }
+
+  async function triggerCrawl() {
+    const urlInput = document.getElementById('crawlUrlInput');
+    const targetUrl = urlInput ? urlInput.value.trim() : '';
+    const confirmMsg = targetUrl
+      ? `아래 URL을 크롤링하시겠습니까?\n\n${targetUrl}`
+      : '전체 크롤링을 시작하시겠습니까? (GitHub Actions 워크플로가 실행됩니다)';
+
+    if (!confirm(confirmMsg)) return;
+    closeCrawlModal();
+
+    try {
+      const body = targetUrl ? JSON.stringify({ url: targetUrl }) : '{}';
+      const resp = await fetch('/api/trigger-crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      const data = await readApiJson(resp);
+
+      if (data.success) {
+        const panel = document.getElementById('crawlProgressPanel');
+        const title = document.getElementById('crawlProgressTitle');
+        const log = document.getElementById('crawlProgressLog');
+        panel.classList.add('active');
+        setCrawlProgressCollapsed(false);
+        title.textContent = '크롤링 진행 상황 (실시간)';
+        log.textContent = `✅ ${data.message}\n실시간 상태를 불러오는 중...`;
+        renderCrawlStatus({ running: true });
         loadCrawlStatus();
-        loadCrawlProgress();
-        crawlStatusTimer = setInterval(loadCrawlStatus, 15000);
-    </script>
+        ensureCrawlProgressPolling(true);
+      } else {
+        alert('❌ ' + (data.error || '실패'));
+      }
+    } catch (e) {
+      alert('❌ 요청 실패: ' + e.message);
+    }
+  }
+
+  async function togglePostHide(postId, buttonEl) {
+    try {
+      const resp = await fetch('/api/toggle-hide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: postId })
+      });
+      const data = await readApiJson(resp);
+      if (data.success) {
+        const discoverItem = buttonEl.closest('.discover-item');
+
+        if (discoverItem && data.is_hidden) {
+          const randomList = document.getElementById('randomList');
+
+          if (randomList.contains(discoverItem)) {
+            discoverItem.remove();
+            await loadNextRandomPost();
+          } else {
+            discoverItem.remove();
+            loadDiscover();
+          }
+
+          return;
+        }
+
+        if (hiddenPostsMode && !data.is_hidden) {
+          const hiddenPostItem = document.getElementById(`post-${postId}`);
+          if (hiddenPostItem) hiddenPostItem.remove();
+          loadPosts(currentPage);
+          return;
+        }
+
+        const postItem = document.getElementById(`post-${postId}`);
+        if (postItem) {
+          postItem.style.opacity = '0.5';
+          postItem.style.textDecoration = 'line-through';
+          buttonEl.textContent = data.is_hidden ? '✓ 숨김됨' : '🚫 숨김';
+          buttonEl.disabled = true;
+          setTimeout(() => {
+            postItem.style.transition = 'opacity 0.3s';
+            postItem.style.opacity = '0.3';
+          }, 300);
+        }
+      } else {
+        alert(`오류: ${data.error || '실패'}`);
+      }
+    } catch (e) {
+      alert(`요청 실패: ${e.message}`);
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('ko-KR');
+  }
+
+  function formatDateTime(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleString('ko-KR');
+  }
+
+  function truncate(text, length) {
+    if (!text) return '';
+    return text.length > length ? text.substring(0, length) + '...' : text;
+  }
+
+  function formatYmd(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  document.getElementById('searchInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      searchPosts();
+    }
+  });
+
+  loadStats();
+  setCrawlProgressCollapsed(localStorage.getItem('crawlProgressCollapsed') === 'true', false);
+  switchTab('contents');
+  switchView('list');
+  loadDiscover();
+  loadPosts(1);
+  loadCrawlStatus();
+  loadCrawlProgress();
+  crawlStatusTimer = setInterval(loadCrawlStatus, 15000);
+</script>
 </body>
 </html>
