@@ -995,7 +995,7 @@
         <h3 style="margin:0 0 16px; font-size:1.1rem;">🔄 크롤링 실행</h3>
         <p style="margin:0 0 12px; color:#555; font-size:0.9rem;">URL을 입력하면 단건 크롤링, 비워두면 전체 크롤링을 실행합니다.</p>
         <input type="url" id="crawlUrlInput" placeholder="https://example.tistory.com/123 (선택사항)"
-               style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem; margin-bottom:16px;">
+          style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem; margin-bottom:16px;">
         <div style="display:flex; gap:10px; justify-content:flex-end;">
           <button onclick="closeCrawlModal()" style="padding:8px 18px; border:1px solid #cbd5e1; background:#f3f4f6; color:#374151; border-radius:8px; cursor:pointer;">취소</button>
           <button onclick="triggerCrawl()" style="padding:8px 18px; background:#4285f4; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">🚀 실행</button>
@@ -1008,7 +1008,7 @@
         <h3 style="margin:0 0 10px;">관리자 로그인</h3>
         <p style="margin:0 0 16px; color:#64748b; font-size:13px;">Settings와 숨김 콘텐츠에 접근하려면 관리자 비밀번호가 필요합니다.</p>
         <input type="password" id="adminPasswordInput" autocomplete="current-password" placeholder="관리자 비밀번호"
-               style="width:100%; padding:11px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px;">
+          style="width:100%; padding:11px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px;">
         <div id="adminLoginError" role="alert" style="display:none; margin-top:10px; color:#b91c1c; font-size:13px;"></div>
         <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:18px;">
           <button type="button" onclick="closeAdminLogin(false)" style="background:#e2e8f0; color:#334155;">취소</button>
@@ -1836,7 +1836,7 @@
     }
   }
 
-  async function togglePostHide(postId, buttonEl) {
+  async function togglePostHide(postId, buttonEl, retryAfterLogin = false) {
     try {
       const resp = await fetch('/api/toggle-hide', {
         method: 'POST',
@@ -1844,6 +1844,14 @@
         body: JSON.stringify({ id: postId })
       });
       const data = await readApiJson(resp);
+      if (resp.status === 403 && !retryAfterLogin) {
+        window.dashboardAdminAuthenticated = false;
+        const ok = await adminLogin();
+        if (ok) {
+          return togglePostHide(postId, buttonEl, true);
+        }
+        return;
+      }
       if (data.success) {
         const discoverItem = buttonEl.closest('.discover-item');
 

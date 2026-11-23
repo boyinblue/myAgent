@@ -1137,7 +1137,7 @@ def api_calendar_week():
 
 @app.route('/api/discover')
 def api_discover():
-    """대시보드 추천 목록 API (1년 전 오늘 + 랜덤 3개)"""
+    """대시보드 추천 목록 API (과거 오늘 N년 전 + 랜덤 3개)"""
     if not is_authenticated():
         return jsonify({'error': 'Unauthorized'}), 403
 
@@ -1166,19 +1166,18 @@ def api_discover():
     try:
         select_sql = _build_posts_select_sql(conn)
         today = datetime.now().date()
-        try:
-            one_year_ago = today.replace(year=today.year - 1)
-        except ValueError:
-            one_year_ago = today.replace(year=today.year - 1, day=28)
+        month_day = today.strftime('%m-%d')
+        current_year = today.strftime('%Y')
 
         where_clauses, base_params = _build_search_platform_where(search, platform)
 
         history_where = [
-            DATE_EXPR + " = date(?)",
+            f"strftime('%m-%d', {DATE_EXPR}) = ?",
+            f"strftime('%Y', {DATE_EXPR}) < ?",
             "title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')",
             "(is_hidden IS NULL OR is_hidden = 0)",
         ] + where_clauses
-        history_params = [one_year_ago.isoformat()] + base_params
+        history_params = [month_day, current_year] + base_params
 
         random_where = ["title IS NOT NULL AND title NOT IN ('', 'untitled', '제목 없음')", "(is_hidden IS NULL OR is_hidden = 0)"]
         if where_clauses:
@@ -1217,9 +1216,13 @@ def api_discover():
         history_posts = []
         for row in history_rows:
             row_dict = dict(row)
-            row_dict.pop('post_year', None)
+            post_year_raw = row_dict.pop('post_year', None)
             preview = _to_post_preview(row_dict)
-            preview['years_ago'] = 1
+            try:
+                years_ago = max(1, today.year - int(post_year_raw))
+            except (TypeError, ValueError):
+                years_ago = 1
+            preview['years_ago'] = years_ago
             history_posts.append(_refresh_tistory_thumbnail(preview))
 
         random_posts = [
